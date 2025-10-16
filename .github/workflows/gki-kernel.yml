@@ -846,9 +846,11 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-     - name: 上传编译资产 (仅 AK3)
-  if: ${{ inputs.onlyAk3 }}
-  uses: actions/upload-artifact@v4
-  with:
-    name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
-    path: ./AnyKernel3/*
+       - name: Send to Telegram
+  if: success()
+  env:
+    CHAT_ID: ${{ secrets.CHAT_ID }}
+    BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+  run: |
+    ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+    curl -F document=@"$ZIP_NAME" -F "chat_id=$CHAT_ID" "https://api.telegram.org/bot$BOT_TOKEN/sendDocument"
