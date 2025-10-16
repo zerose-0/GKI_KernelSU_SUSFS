@@ -845,3 +845,17 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
+
+      - name: Send Artifact to Telegram
+        if: success()
+        env:
+    CHAT_ID: ${{ secrets.CHAT_ID }}
+    BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+    # Nama file pasti dari workflow lu
+    ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+    
+    # Kirim file ke Telegram
+    curl -F document=@"$ZIP_NAME" \
+         -F caption="Kernel build: $ZIP_NAME" \
+         "https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$CHAT_ID"
