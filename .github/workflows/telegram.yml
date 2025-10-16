@@ -28,7 +28,7 @@ jobs:
           
           # Buat pesan sederhana
           MESSAGE="✅ *Kernel Build Success*
-
+          
 🏷️ Workflow: $WORKFLOW_NAME
 📦 File: $(basename "$ZIP_FILE")
 🔗 [View Log]($RUN_URL)"
