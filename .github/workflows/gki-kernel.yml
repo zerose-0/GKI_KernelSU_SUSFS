@@ -846,69 +846,26 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      finalize:
-    needs: [set-date, build]
-    runs-on: ubuntu-latest
-    outputs:
-      date: ${{ needs.set-date.outputs.date }}
-    steps:
-      - name: Dummy Finalize
-        run: echo "Finalize completed"
+      # ... Langkah-langkah sebelumnya (seperti membuat file ZIP) ...
 
-  release:
-    needs: [finalize]
-    if: ${{ github.event.inputs.RELEASE == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: .
-
-      - name: Generate Release Notes
-        run: |
-          echo "🔧 **Zer0se GKI Release**" > release.txt
-
-          if [[ "${{ github.event.inputs.BUILD_NOROOT }}" == "true" ]]; then
-            echo "- 🧩 Zer0se-GKI: Without root" >> release.txt
-          fi
-
-          if [[ "${{ github.event.inputs.BUILD_KSUNEXT }}" == "true" ]]; then
-            echo "- 🛡️ Zer0se-GKI-KSUNext+SUSFS: With root KernelSU Next" >> release.txt
-          fi
-
-          if [[ "${{ github.event.inputs.BUILD_SUKISU }}" == "true" ]]; then
-            echo "- 🦊 Zer0se-GKI-SukiSU+SUSFS: With root SukiSU + SUSFS" >> release.txt
-          fi
-
-          echo "" >> release.txt
-          echo "📝 **Notes:**" >> release.txt
-          echo "- Based GKI 6.6" >> release.txt
-          echo "- SUSFS patch applied on SukiSU+KSUNEXT" >> release.txt
-          echo "- Can be used on GKI-based devices (Android 15-6.6)" >> release.txt
-          echo "" >> release.txt
-          echo "📄 <b>Full changelog</b>: [Here](${{ github.event.inputs.KERNEL_REPO }}/commits/${{ github.event.inputs.KERNEL_BRANCH }})" >> release.txt
-          echo "💬 Bug reports: [Support Group](https://t.me/aerenire)" >> release.txt
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: Zer0se-GKI-${{ needs.finalize.outputs.date }}
-          name: Zer0se GKI - ${{ needs.finalize.outputs.date }}
-          body_path: release.txt
-          files: "**/*.zip"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Notify Build Success
-        uses: appleboy/telegram-action@master
+      - name: Kirim Notifikasi dan Hasil Build ke Telegram
+        if: success() # Hanya berjalan jika semua langkah sebelumnya berhasil
+        uses: appleboy/telegram-action@v0.1.1
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
-          format: html
-          disable_web_page_preview: true
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: html # Menggunakan format HTML agar pesan lebih rapi
+          document: ./${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip
           message: |
-            <b>✅ Zer0se GKI Build Success</b>
-            <b>📦 Variants</b>: <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
-            <b>📅 Date</b>: <code>${{ needs.finalize.outputs.date }}</code>
-            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/Zer0se-GKI-${{ needs.finalize.outputs.date }}">Click Here</a>
+            <b>✅ Build GKI Kernel Berhasil!</b>
+
+            <b>Repositori:</b> ${{ github.repository }}
+            <b>Commit:</b> <code>${{ github.sha }}</code>
+            
+            <b>Detail Build:</b>
+            - <b>Android:</b> ${{ inputs.android_version }}
+            - <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+            - <b>OS Patch:</b> ${{ inputs.os_patch_level }}
+            - <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})
+            
+            File hasil build <i>(AnyKernel3.zip)</i> terlampir dalam pesan ini.
