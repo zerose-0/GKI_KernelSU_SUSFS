@@ -849,13 +849,21 @@ jobs:
       # ... Langkah-langkah sebelumnya (seperti membuat file ZIP) ...
 
       - name: Kirim Notifikasi dan Hasil Build ke Telegram
-        if: success() # Hanya berjalan jika semua langkah sebelumnya berhasil
-        uses: appleboy/telegram-action@v0.1.1
+        # Menggunakan versi terbaru (v1.0.1) untuk menghindari error Docker 'pull access denied'.
+        uses: appleboy/telegram-action@v1.0.1
+        
+        # Aksi hanya akan berjalan jika semua langkah sebelumnya berhasil (success)
+        if: success() 
+        
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: html # Menggunakan format HTML agar pesan lebih rapi
+          format: html # Menggunakan format HTML untuk tampilan yang lebih rapi di Telegram
+          
+          # Mengirim file hasil build sebagai dokumen
           document: ./${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip
+          
+          # Pesan notifikasi
           message: |
             <b>✅ Build GKI Kernel Berhasil!</b>
 
