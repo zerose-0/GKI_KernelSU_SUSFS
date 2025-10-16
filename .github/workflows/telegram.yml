@@ -1,7 +1,7 @@
 name: Telegram Notifier
 on:
   workflow_run:
-    workflows: ["编译内核a15-6-6", "Android 15 6.6"]  # Nama kedua workflow lu
+    workflows: ["编译内核a15-6-6", "Android 15 6.6"]
     types: [completed]
 
 jobs:
@@ -19,20 +19,18 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          # Cari file ZIP (AnyKernel3 atau boot image)
+          # Cari file ZIP
           ZIP_FILE=$(find . -name "*.zip" | head -n 1)
           
-          # Dapetin info dari workflow yang jalan
+          # Dapetin info dari workflow_run
           WORKFLOW_NAME="${{ github.event.workflow_run.name }}"
-          COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
           RUN_URL="${{ github.event.workflow_run.html_url }}"
           
-          # Buat pesan detail
+          # Buat pesan sederhana
           MESSAGE="✅ *Kernel Build Success*
 
 🏷️ Workflow: $WORKFLOW_NAME
 📦 File: $(basename "$ZIP_FILE")
-📝 Commit: ${COMMIT_MSG:0:50}...
 🔗 [View Log]($RUN_URL)"
 
           # Kirim file + pesan ke Telegram
@@ -44,6 +42,6 @@ jobs:
           else
             curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
               -d chat_id="$CHAT_ID" \
-              -d text="$MESSAGE" \
+              -d text="✅ Kernel Build Success - $WORKFLOW_NAME" \
               -d parse_mode="Markdown"
           fi
