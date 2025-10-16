@@ -830,23 +830,14 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
-      - name: 上传编译资产 (完整包)
-        if: ${{ !inputs.onlyAk3 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
-          path: |
-            *AnyKernel3.zip
-            *.img
-
       - name: 上传编译资产 (仅 AK3)
-        if: ${{ inputs.onlyAk3 }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
-          path: ./AnyKernel3/*
+  if: ${{ inputs.onlyAk3 }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
+    path: ./AnyKernel3/*
 
-       - name: Send to Telegram
+- name: Send to Telegram
   if: success()
   env:
     CHAT_ID: ${{ secrets.CHAT_ID }}
