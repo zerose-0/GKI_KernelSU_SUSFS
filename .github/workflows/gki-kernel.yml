@@ -846,7 +846,7 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-            - name: Upload To Telegram
+       - name: Upload To Telegram
         if: success()
         env:
           CHAT_ID: ${{ secrets.CHAT_ID }}
