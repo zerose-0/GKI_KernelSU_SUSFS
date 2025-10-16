@@ -846,29 +846,51 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Send ZIP to Telegram
-  env:
-    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-  run: |
-    CAPTION="Kernel Build Complete
+      - name: Kirim hasil build ke Telegram
+      if: success()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        START_TIME=$(date +%s)
 
-    Android: ${{ inputs.android_version }}
-    Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
-    Patch: ${{ inputs.os_patch_level }}
-    KernelSU: ${{ inputs.kernelsu_variant }}
+        ARTIFACT_PATH=$(find out -type f -name "*.zip" | head -n 1)
+        if [ -z "$ARTIFACT_PATH" ]; then
+          echo "❌ Tidak ada file ZIP ditemukan di folder out/"
+          exit 1
+        fi
 
-    Features:
-    - KernelSU ${{ inputs.kernelsu_variant }}
-    - SUSFS Root Solution
-    - ZRAM Optimization
-    - Baseband Guard ${{ inputs.use_bbg && 'ON' || 'OFF' }}
-    - KPM Support ${{ inputs.use_kpm && 'ON' || 'OFF' }}
-    - OnePlus 8E Support ${{ inputs.supp_op && 'ON' || 'OFF' }}"
+        FILE_NAME=$(basename "$ARTIFACT_PATH")
 
-    for file in *.zip; do
-      curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
-        -F chat_id="$TELEGRAM_CHAT_ID" \
-        -F document=@"$file" \
-        -F caption="$CAPTION"
-    done
+        # Deteksi fitur aktif berdasarkan input workflow
+        FEATURES="⚙️ Fitur Kernel:"
+        [[ "${{ inputs.use_zram }}" == "true" ]] && FEATURES+="\n• ZRAM aktif (kompresi RAM)"
+        [[ "${{ inputs.use_lz4kd }}" == "true" ]] && FEATURES+="\n• LZ4KD compression diaktifkan"
+        [[ "${{ inputs.use_bbg }}" == "true" ]] && FEATURES+="\n• BBG patch diaktifkan"
+        [[ "${{ inputs.use_susfs_next }}" == "true" ]] && FEATURES+="\n• SUSFS module support"
+        [[ "${{ inputs.use_uknown }}" == "true" ]] && FEATURES+="\n• Uknown patch diaktifkan"
+        [[ "${{ inputs.kernelsu_variant }}" != "" ]] && FEATURES+="\n• KernelSU variant: ${{ inputs.kernelsu_variant }}"
+        [[ "${{ inputs.use_kernelsu_next }}" == "true" ]] && FEATURES+="\n• KernelSU Next patch aktif"
+        FEATURES+="\n• Toolchain: Clang ${{ inputs.use_clang_version }}"
+        FEATURES+="\n• Android version: ${{ inputs.android_version }}"
+        FEATURES+="\n• Kernel version: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}"
+        FEATURES+="\n• Patch level: ${{ inputs.os_patch_level }}"
+
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        MIN=$((DURATION / 60))
+        SEC=$((DURATION % 60))
+
+        CAPTION="✅ Build Kernel Selesai!
+📦 File: $FILE_NAME
+
+$FEATURES
+
+⏱️ Durasi build: ${MIN} menit ${SEC} detik"
+
+        echo "📤 Mengirim hasil build ke Telegram..."
+
+        curl -s -F chat_id=$TELEGRAM_CHAT_ID \
+             -F document=@"$ARTIFACT_PATH" \
+             -F caption="$CAPTION" \
+             https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument
