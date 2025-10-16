@@ -846,34 +846,102 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      # ... Langkah-langkah sebelumnya (seperti membuat file ZIP) ...
+      # Verifikasi file sebelum kirim
+      - name: Verifikasi File ZIP
+        if: inputs.onlyAk3 == false
+        run: |
+          echo "=== Daftar File di Root Directory ==="
+          ls -lah *.zip || echo "Tidak ada file ZIP ditemukan"
+          
+          echo "=== Cek File Spesifik ==="
+          FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+          if [ -f "$FILE" ]; then
+            echo "✅ File ditemukan: $FILE"
+            echo "📦 Ukuran: $(du -h "$FILE" | cut -f1)"
+          else
+            echo "❌ File tidak ditemukan: $FILE"
+            exit 1
+          fi
 
+      # Kirim notifikasi sukses dengan file ZIP
       - name: Kirim Notifikasi dan Hasil Build ke Telegram
-        # Menggunakan versi terbaru (v1.0.1) untuk menghindari error Docker 'pull access denied'.
-        uses: appleboy/telegram-action@v1.0.1
-        
-        # Aksi hanya akan berjalan jika semua langkah sebelumnya berhasil (success)
-        if: success() 
-        
+        uses: appleboy/telegram-action@master
+        if: success() && inputs.onlyAk3 == false
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          format: html # Menggunakan format HTML untuk tampilan yang lebih rapi di Telegram
-          
-          # Mengirim file hasil build sebagai dokumen
-          document: ./${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip
-          
-          # Pesan notifikasi
+          format: html
+          document: ${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip
           message: |
             <b>✅ Build GKI Kernel Berhasil!</b>
 
             <b>Repositori:</b> ${{ github.repository }}
+            <b>Branch:</b> ${{ github.ref_name }}
             <b>Commit:</b> <code>${{ github.sha }}</code>
+            <b>Workflow:</b> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">Lihat Detail</a>
             
-            <b>Detail Build:</b>
-            - <b>Android:</b> ${{ inputs.android_version }}
-            - <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
-            - <b>OS Patch:</b> ${{ inputs.os_patch_level }}
-            - <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})
+            <b>📋 Detail Build:</b>
+            • <b>Android:</b> ${{ inputs.android_version }}
+            • <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+            • <b>OS Patch:</b> ${{ inputs.os_patch_level }}
+            • <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})
             
-            File hasil build <i>(AnyKernel3.zip)</i> terlampir dalam pesan ini.
+            <b>⚙️ Fitur:</b>
+            • ZRAM: ${{ inputs.use_zram && '✅' || '❌' }}
+            • BBG: ${{ inputs.use_bbg && '✅' || '❌' }}
+            • KPM: ${{ inputs.use_kpm && '✅' || '❌' }}
+            • OnePlus Support: ${{ inputs.supp_op && '✅' || '❌' }}
+            
+            📦 File hasil build terlampir dalam pesan ini
+
+      # Kirim notifikasi untuk build onlyAK3 (tanpa file)
+      - name: Kirim Notifikasi Build OnlyAK3
+        uses: appleboy/telegram-action@master
+        if: success() && inputs.onlyAk3 == true
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: html
+          message: |
+            <b>✅ Build GKI Kernel (AnyKernel3 Only) Berhasil!</b>
+
+            <b>Repositori:</b> ${{ github.repository }}
+            <b>Branch:</b> ${{ github.ref_name }}
+            <b>Commit:</b> <code>${{ github.sha }}</code>
+            <b>Download:</b> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">Unduh dari Artifacts</a>
+            
+            <b>📋 Detail Build:</b>
+            • <b>Android:</b> ${{ inputs.android_version }}
+            • <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+            • <b>OS Patch:</b> ${{ inputs.os_patch_level }}
+            • <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})
+            
+            <b>⚙️ Fitur:</b>
+            • ZRAM: ${{ inputs.use_zram && '✅' || '❌' }}
+            • BBG: ${{ inputs.use_bbg && '✅' || '❌' }}
+            • KPM: ${{ inputs.use_kpm && '✅' || '❌' }}
+            
+            ⚠️ File AnyKernel3 tersedia di GitHub Actions Artifacts
+
+      # Kirim notifikasi jika build gagal
+      - name: Kirim Notifikasi Build Gagal
+        uses: appleboy/telegram-action@master
+        if: failure()
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          format: html
+          message: |
+            <b>❌ Build GKI Kernel Gagal!</b>
+            
+            <b>Repositori:</b> ${{ github.repository }}
+            <b>Branch:</b> ${{ github.ref_name }}
+            <b>Commit:</b> <code>${{ github.sha }}</code>
+            <b>Logs:</b> <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">Lihat Error Detail</a>
+            
+            <b>⚙️ Konfigurasi Build:</b>
+            • <b>Android:</b> ${{ inputs.android_version }}
+            • <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+            • <b>KernelSU:</b> ${{ inputs.kernelsu_variant }}
+            
+            Silakan cek logs untuk detail error
