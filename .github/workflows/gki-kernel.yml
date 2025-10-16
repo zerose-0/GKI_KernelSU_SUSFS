@@ -853,12 +853,19 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           echo "📤 Mengirim hasil build ke Telegram..."
-          FILE_PATH=$(find AnyKernel3 -type f -name "*.zip" | head -n 1)
-          if [ -f "$FILE_PATH" ]; then
-            curl -s -F chat_id="${TELEGRAM_CHAT_ID}" \
-                 -F document=@"$FILE_PATH" \
-                 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument"
-            echo "✅ File berhasil dikirim ke Telegram!"
-          else
-            echo "⚠️ Tidak ditemukan file zip di folder AnyKernel3"
-          fi          
+
+# Pastikan file hasil build .zip dipindah ke folder AnyKernel3 agar bisa ditemukan
+mv *.zip AnyKernel3/ 2>/dev/null || true
+
+# Cari file zip di folder AnyKernel3
+FILE_PATH=$(find AnyKernel3 -type f -name "*.zip" | head -n 1)
+
+if [ -f "$FILE_PATH" ]; then
+  echo "✅ File ditemukan: $FILE_PATH"
+  curl -s -F chat_id="${TELEGRAM_CHAT_ID}" \
+       -F document=@"$FILE_PATH" \
+       "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument"
+  echo "✅ File berhasil dikirim ke Telegram!"
+else
+  echo "⚠️ Tidak ditemukan file zip di folder AnyKernel3"
+fi          
