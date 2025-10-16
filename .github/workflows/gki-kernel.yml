@@ -853,29 +853,36 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         START_TIME=$(date +%s)
+
+        # Cari file hasil build di folder out/
         ARTIFACT_PATH=$(find out -type f -name "*.zip" | head -n 1)
         if [ -z "$ARTIFACT_PATH" ]; then
           echo "❌ Tidak ada file ZIP ditemukan di folder out/"
           exit 1
         fi
+
         FILE_NAME=$(basename "$ARTIFACT_PATH")
-        # Deteksi fitur aktif berdasarkan input workflow
+
+        # Deteksi fitur kernel dari input workflow
         FEATURES="⚙️ Fitur Kernel:"
-        [[ "${{ inputs.use_zram }}" == "true" ]] && FEATURES+="\n• ZRAM aktif (kompresi RAM)"
-        [[ "${{ inputs.use_lz4kd }}" == "true" ]] && FEATURES+="\n• LZ4KD compression diaktifkan"
-        [[ "${{ inputs.use_bbg }}" == "true" ]] && FEATURES+="\n• BBG patch diaktifkan"
-        [[ "${{ inputs.use_susfs_next }}" == "true" ]] && FEATURES+="\n• SUSFS module support"
-        [[ "${{ inputs.use_uknown }}" == "true" ]] && FEATURES+="\n• Uknown patch diaktifkan"
-        [[ "${{ inputs.kernelsu_variant }}" != "" ]] && FEATURES+="\n• KernelSU variant: ${{ inputs.kernelsu_variant }}"
-        [[ "${{ inputs.use_kernelsu_next }}" == "true" ]] && FEATURES+="\n• KernelSU Next patch aktif"
+        if [ "${{ inputs.use_zram }}" = "true" ]; then FEATURES+="\n• ZRAM aktif (kompresi RAM)"; fi
+        if [ "${{ inputs.use_lz4kd }}" = "true" ]; then FEATURES+="\n• LZ4KD compression diaktifkan"; fi
+        if [ "${{ inputs.use_bbg }}" = "true" ]; then FEATURES+="\n• BBG patch diaktifkan"; fi
+        if [ "${{ inputs.use_susfs_next }}" = "true" ]; then FEATURES+="\n• SUSFS module support"; fi
+        if [ "${{ inputs.use_uknown }}" = "true" ]; then FEATURES+="\n• Uknown patch diaktifkan"; fi
+        if [ -n "${{ inputs.kernelsu_variant }}" ]; then FEATURES+="\n• KernelSU variant: ${{ inputs.kernelsu_variant }}"; fi
+        if [ "${{ inputs.use_kernelsu_next }}" = "true" ]; then FEATURES+="\n• KernelSU Next patch aktif"; fi
+
         FEATURES+="\n• Toolchain: Clang ${{ inputs.use_clang_version }}"
         FEATURES+="\n• Android version: ${{ inputs.android_version }}"
         FEATURES+="\n• Kernel version: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}"
         FEATURES+="\n• Patch level: ${{ inputs.os_patch_level }}"
+
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
         MIN=$((DURATION / 60))
         SEC=$((DURATION % 60))
+
         CAPTION="✅ Build Kernel Selesai!
 📦 File: $FILE_NAME
 
@@ -883,9 +890,8 @@ $FEATURES
 
 ⏱️ Durasi build: ${MIN} menit ${SEC} detik"
 
-        echo "📤 Mengirim hasil build ke Telegram..."
-
+        echo "📤 Mengirim $FILE_NAME ke Telegram..."
         curl -s -F chat_id=$TELEGRAM_CHAT_ID \
              -F document=@"$ARTIFACT_PATH" \
              -F caption="$CAPTION" \
-             https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument          
+             https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument   
