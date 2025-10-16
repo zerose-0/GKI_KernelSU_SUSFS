@@ -64,12 +64,12 @@ on:
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
-    env:
+      env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
 
-    steps:
+      steps:
       - name: Maximize Build Space
         uses: AdityaGarg8/remove-unwanted-software@v5
         with:
