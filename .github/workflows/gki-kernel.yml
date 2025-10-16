@@ -845,3 +845,37 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
+
+      - name: Kirim Notifikasi ke Telegram
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -f "$CONFIG/bazel-bin/common/kernel_aarch64/Image" ]; then
+            KERNEL_VER=$(strings $CONFIG/bazel-bin/common/kernel_aarch64/Image | grep 'Linux version' | head -1)
+          else
+            KERNEL_VER=$(strings $CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image | grep 'Linux version' | head -1)
+          fi
+          
+          FEATURES="[+] LZ4 v1.10.0 & LZ4KD (ZRAM)%0A[+] BBR Algorithm + ECN Support%0A[+] TMPFS XATTR + POSIX ACL Support%0A[+] Kernel-level Baseband Protection Support"
+          
+          MESSAGE="🔔 <b>Kernel Build Complete!</b>%0A%0A📦 <b>KernelVer:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A🔧 <b>DriverKSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.revision }})%0A💾 <b>SUSFS:</b> v1.5.11 (Manual Hook)%0A%0A📋 <b>Features:</b>%0A${FEATURES}%0A%0A⏰ <b>Build:</b> $(date '+%d Oktober %H:%M')%0A🔗 <b>Link:</b> ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${MESSAGE}" \
+            -d "parse_mode=HTML"
+
+      - name: Kirim File ke Telegram
+        if: success() && inputs.onlyAk3 == false
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          ZIP_FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+          
+          curl -F "chat_id=${TELEGRAM_CHAT_ID}" \
+               -F "document=@${ZIP_FILE}" \
+               -F "caption=📦 AnyKernel3 Package" \
+               "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
