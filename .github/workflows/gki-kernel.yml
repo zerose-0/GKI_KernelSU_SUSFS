@@ -64,7 +64,7 @@ on:
 jobs:
   build-kernel-kernelsu-susfs:
     runs-on: ubuntu-latest
-      env:
+    env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
