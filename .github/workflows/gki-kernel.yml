@@ -846,66 +846,42 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Upload To Telegram
-      env:
-        CHAT_ID: ${{ secrets.CHAT_ID }}
-        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-        COMMIT_URL: ${{ github.event.head_commit.url }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        TITLE: Kernel Build Notification
-      run: |
-        if [ ! -z "${{ secrets.CHAT_ID }}" ] && [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then
+            - name: Upload To Telegram
+        if: success()
+        env:
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          echo "Menyiapkan notifikasi Telegram..."
           
-          # Set variabel untuk informasi build
-          KERNEL_INFO="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}"
-          KERNEL_VARIANT="${{ inputs.kernelsu_variant }}"
-          BUILD_TYPE="${{ inputs.kernelsu_branch }}"
-          
-          # Cari file yang akan diupload
+          # Cari file ZIP
           if [ "${{ inputs.onlyAk3 }}" == "true" ]; then
             FILE_TO_UPLOAD=$(find ./AnyKernel3 -name "*.zip" | head -n 1)
           else
             FILE_TO_UPLOAD=$(find . -name "*AnyKernel3.zip" | head -n 1)
           fi
           
-          # Buat pesan notifikasi
+          # Buat pesan sederhana dulu
           MESSAGE="✅ *Build Kernel Selesai*
+          
+Android: ${{ inputs.android_version }}
+Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+Variant: ${{ inputs.kernelsu_variant }}
 
-📱 *Info Kernel:*
-• Android: ${{ inputs.android_version }}
-• Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
-• Patch Level: ${{ inputs.os_patch_level }}
-• Variant: $KERNEL_VARIANT
-• Branch: $BUILD_TYPE
-
-⚙️ *Fitur:*
-• KernelSU: ${{ inputs.kernelsu_variant }}
-• SUSFS: ✅
-• ZRAM: ${{ inputs.use_zram && '✅' || '❌' }}
-• BBG: ${{ inputs.use_bbg && '✅' || '❌' }}
-• KPM: ${{ inputs.use_kpm && '✅' || '❌' }}
-
-📊 *Info Build:*
-• Commit: ${COMMIT_MESSAGE:0:50}...
-• Runner: ${{ runner.os }}
-• Workflow: $TITLE
-
-🔗 [Lihat Log Build]($RUN_URL)"
-
-          # Upload file ke Telegram menggunakan script bot
+🔗 [Lihat Log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          
+          # Upload file ke Telegram
           if [ -f "$FILE_TO_UPLOAD" ]; then
             echo "Mengupload file: $FILE_TO_UPLOAD"
-            bash .github/scripts/telegram_bot.sh "$FILE_TO_UPLOAD" "$MESSAGE"
+            curl -F document=@"$FILE_TO_UPLOAD" \
+                 -F caption="$MESSAGE" \
+                 -F parse_mode="Markdown" \
+                 "https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$CHAT_ID"
           else
-            # Jika tidak ada file zip, kirim pesan saja
-            echo "File ZIP tidak ditemukan, mengirim notifikasi tanpa file"
+            echo "File ZIP tidak ditemukan, kirim pesan teks saja"
             curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
               -d chat_id="$CHAT_ID" \
               -d text="$MESSAGE" \
               -d parse_mode="Markdown"
-          fi
-          
-        else
-          echo "Token bot Telegram atau Chat ID tidak ditemukan, silakan tambahkan ke repository secrets!"
+          fi "Token bot Telegram atau Chat ID tidak ditemukan, silakan tambahkan ke repository secrets!"
         fi
