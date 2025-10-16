@@ -846,36 +846,69 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Kirim Notifikasi ke Telegram
-        if: success()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      finalize:
+    needs: [set-date, build]
+    runs-on: ubuntu-latest
+    outputs:
+      date: ${{ needs.set-date.outputs.date }}
+    steps:
+      - name: Dummy Finalize
+        run: echo "Finalize completed"
+
+  release:
+    needs: [finalize]
+    if: ${{ github.event.inputs.RELEASE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: .
+
+      - name: Generate Release Notes
         run: |
-          if [ -f "$CONFIG/bazel-bin/common/kernel_aarch64/Image" ]; then
-            KERNEL_VER=$(strings $CONFIG/bazel-bin/common/kernel_aarch64/Image | grep 'Linux version' | head -1)
-          else
-            KERNEL_VER=$(strings $CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image | grep 'Linux version' | head -1)
+          echo "🔧 **Zer0se GKI Release**" > release.txt
+
+          if [[ "${{ github.event.inputs.BUILD_NOROOT }}" == "true" ]]; then
+            echo "- 🧩 Zer0se-GKI: Without root" >> release.txt
           fi
-          
-          FEATURES="[+] LZ4 v1.10.0 & LZ4KD (ZRAM)%0A[+] BBR Algorithm + ECN Support%0A[+] TMPFS XATTR + POSIX ACL Support%0A[+] Kernel-level Baseband Protection Support"
-          
-          MESSAGE="🔔 <b>Kernel Build Complete!</b>%0A%0A📦 <b>KernelVer:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A🔧 <b>DriverKSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.revision }})%0A💾 <b>SUSFS:</b> v1.5.11 (Manual Hook)%0A%0A📋 <b>Features:</b>%0A${FEATURES}%0A%0A⏰ <b>Build:</b> $(date '+%d Oktober %H:%M')%0A🔗 <b>Link:</b> ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d "chat_id=${TELEGRAM_CHAT_ID}" \
-            -d "text=${MESSAGE}" \
-            -d "parse_mode=HTML"
+          if [[ "${{ github.event.inputs.BUILD_KSUNEXT }}" == "true" ]]; then
+            echo "- 🛡️ Zer0se-GKI-KSUNext+SUSFS: With root KernelSU Next" >> release.txt
+          fi
 
-      - name: Kirim File ke Telegram
-        if: success() && inputs.onlyAk3 == false
+          if [[ "${{ github.event.inputs.BUILD_SUKISU }}" == "true" ]]; then
+            echo "- 🦊 Zer0se-GKI-SukiSU+SUSFS: With root SukiSU + SUSFS" >> release.txt
+          fi
+
+          echo "" >> release.txt
+          echo "📝 **Notes:**" >> release.txt
+          echo "- Based GKI 6.6" >> release.txt
+          echo "- SUSFS patch applied on SukiSU+KSUNEXT" >> release.txt
+          echo "- Can be used on GKI-based devices (Android 15-6.6)" >> release.txt
+          echo "" >> release.txt
+          echo "📄 <b>Full changelog</b>: [Here](${{ github.event.inputs.KERNEL_REPO }}/commits/${{ github.event.inputs.KERNEL_BRANCH }})" >> release.txt
+          echo "💬 Bug reports: [Support Group](https://t.me/aerenire)" >> release.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: Zer0se-GKI-${{ needs.finalize.outputs.date }}
+          name: Zer0se GKI - ${{ needs.finalize.outputs.date }}
+          body_path: release.txt
+          files: "**/*.zip"
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          ZIP_FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          
-          curl -F "chat_id=${TELEGRAM_CHAT_ID}" \
-               -F "document=@${ZIP_FILE}" \
-               -F "caption=📦 AnyKernel3 Package" \
-               "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Build Success
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          disable_web_page_preview: true
+          message: |
+            <b>✅ Zer0se GKI Build Success</b>
+            <b>📦 Variants</b>: <code>${{ github.event.inputs.BUILD_NOROOT == 'true' && 'Noroot' || '' }} ${{ github.event.inputs.BUILD_KSUNEXT == 'true' && 'KSUNext' || '' }} ${{ github.event.inputs.BUILD_SUKISU == 'true' && 'SukiSU' || '' }}</code>
+            <b>📅 Date</b>: <code>${{ needs.finalize.outputs.date }}</code>
+            <b>🔗 Download</b>: <a href="${{ github.server_url }}/${{ github.repository }}/releases/tag/Zer0se-GKI-${{ needs.finalize.outputs.date }}">Click Here</a>
