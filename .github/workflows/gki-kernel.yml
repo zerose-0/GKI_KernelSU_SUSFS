@@ -882,13 +882,14 @@ jobs:
         DURATION=$((END_TIME - START_TIME))
         MIN=$((DURATION / 60))
         SEC=$((DURATION % 60))
-
+        
         CAPTION="✅ Build Kernel Selesai!
-📦 File: $FILE_NAME
 
-$FEATURES
+        📁 File: $FILE_NAME
 
-⏱️ Durasi build: ${MIN} menit ${SEC} detik"
+        $FEATURES"
+
+        ⏱️ Durasi build: ${MIN} menit ${SEC} detik"
 
         echo "📤 Mengirim $FILE_NAME ke Telegram..."
         curl -s -F chat_id=$TELEGRAM_CHAT_ID \
