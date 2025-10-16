@@ -846,88 +846,29 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Send Artifact to Telegram
-        if: success()
-        run: |
-          echo "🔍 Mencari file artifact..."
-          
-          # Hitung durasi build
-          BUILD_START="${{ inputs.build_time }}"
-          BUILD_END=$(date -u '+%s')
-          
-          if [ -z "$BUILD_START" ]; then
-            DURATION="N/A"
-          else
-            BUILD_START_EPOCH=$(date -d "$BUILD_START" '+%s' 2>/dev/null || echo "0")
-            DURATION_SECONDS=$((BUILD_END - BUILD_START_EPOCH))
-            DURATION_MINUTES=$((DURATION_SECONDS / 60))
-            DURATION="${DURATION_MINUTES} menit"
-          fi
-          
-          # Cari file AnyKernel3.zip
-          ZIPFILE=$(find . -type f -name "*AnyKernel3.zip" | head -1)
-          
-          if [ -z "$ZIPFILE" ]; then
-            echo "❌ File AnyKernel3.zip tidak ditemukan!"
-            exit 1
-          fi
-          
-          FILENAME=$(basename "$ZIPFILE")
-          FILESIZE=$(du -h "$ZIPFILE" | cut -f1)
-          
-          echo "📦 File ditemukan: $FILENAME ($FILESIZE)"
-          
-          # Build info
-          BUILD_DATETIME=$(TZ='Asia/Jakarta' date '+%d %B %Y, %H:%M WIB')
-          
-          # Kernel features
-          FEATURES="• KernelSU ${{ inputs.kernelsu_variant }}%0A"
-          FEATURES="${FEATURES}• SUSFS (Anti-detection)%0A"
-          
-          if [ "${{ inputs.use_zram }}" = "true" ]; then
-            FEATURES="${FEATURES}• LZ4 1.10.0 + LZ4KD + LZ4K_OPLUS%0A"
-          fi
-          
-          if [ "${{ inputs.use_bbg }}" = "true" ]; then
-            FEATURES="${FEATURES}• Baseband Guard (BBG)%0A"
-          fi
-          
-          if [ "${{ inputs.use_kpm }}" = "true" ] && [ "${{ inputs.kernelsu_variant }}" = "SukiSU" ]; then
-            FEATURES="${FEATURES}• KPM Support%0A"
-          fi
-          
-          if [ "${{ inputs.supp_op }}" = "true" ]; then
-            FEATURES="${FEATURES}• OnePlus 8 Series Support%0A"
-          fi
-          
-          # Caption untuk Telegram
-          CAPTION="🚀 *KERNEL BUILD COMPLETED*%0A%0A"
-          CAPTION="${CAPTION}📦 *File Info*%0A"
-          CAPTION="${CAPTION}├ Name: \`${FILENAME}\`%0A"
-          CAPTION="${CAPTION}├ Size: ${FILESIZE}%0A"
-          CAPTION="${CAPTION}└ Config: \`${{ env.CONFIG }}\`%0A%0A"
-          CAPTION="${CAPTION}⚙️ *Kernel Features*%0A${FEATURES}%0A"
-          CAPTION="${CAPTION}⏱️ *Build Info*%0A"
-          CAPTION="${CAPTION}├ Duration: ${DURATION}%0A"
-          CAPTION="${CAPTION}├ Date: ${BUILD_DATETIME}%0A"
-          CAPTION="${CAPTION}├ Commit: \`${GITHUB_SHA:0:7}\`%0A"
-          CAPTION="${CAPTION}└ Builder: @${{ github.actor }}%0A%0A"
-          CAPTION="${CAPTION}🔗 *Links*%0A"
-          CAPTION="${CAPTION}└ [Workflow Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-          
-          # Kirim ke Telegram
-          echo "📤 Mengirim ke Telegram..."
-          
-          RESPONSE=$(curl -s -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -F "document=@${ZIPFILE}" \
-               -F "caption=${CAPTION}" \
-               -F "parse_mode=Markdown" \
-               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument")
-          
-          if echo "$RESPONSE" | grep -q '"ok":true'; then
-            echo "✅ Berhasil mengirim ke Telegram!"
-          else
-            echo "❌ Gagal mengirim ke Telegram!"
-            echo "Response: $RESPONSE"
-            exit 1
-          fi
+      - name: Send ZIP to Telegram
+  env:
+    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  run: |
+    CAPTION="Kernel Build Complete
+
+    Android: ${{ inputs.android_version }}
+    Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+    Patch: ${{ inputs.os_patch_level }}
+    KernelSU: ${{ inputs.kernelsu_variant }}
+
+    Features:
+    - KernelSU ${{ inputs.kernelsu_variant }}
+    - SUSFS Root Solution
+    - ZRAM Optimization
+    - Baseband Guard ${{ inputs.use_bbg && 'ON' || 'OFF' }}
+    - KPM Support ${{ inputs.use_kpm && 'ON' || 'OFF' }}
+    - OnePlus 8E Support ${{ inputs.supp_op && 'ON' || 'OFF' }}"
+
+    for file in *.zip; do
+      curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
+        -F chat_id="$TELEGRAM_CHAT_ID" \
+        -F document=@"$file" \
+        -F caption="$CAPTION"
+    done
