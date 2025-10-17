@@ -615,24 +615,44 @@ jobs:
       - name: 配置内核名称(常规构建)
         run: |
           echo "更改为配置目录: $CONFIG..."
-          cd "$CONFIG"
+          cd "$CONFIG/common"
 
-          if [ ! -z ${{ inputs.version }} ]; then
-            echo "版本号不为空"
-            sed -i '$s|echo "\$res"|echo "${{ inputs.version }}"|' ./common/scripts/setlocalversion
-            sed -i '/^CONFIG_LOCALVERSION=/ s/="\([^"]*\)"/="${{ inputs.version }}"/' ./common/arch/arm64/configs/gki_defconfig
-          elif [ ! -f "build/build.sh" ]; then
-            echo "版本号为空,如果使用bazel编译,且如果使用bazel则加上kmi"
-            cd ./common
-
-            # 6.1
-            kmi="-android14-11-g$(git rev-parse --verify HEAD | cut -c1-13)"
-            echo "KMI=$kmi"
-            sed -i "\$s|echo \"\$res\"|echo \"$kmi\"|" ./scripts/setlocalversion
-            # 6.6
-            kmi="-g$(git rev-parse --verify HEAD | cut -c1-13)-4k"
-            sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"${kmi}\"/" ./arch/arm64/configs/gki_defconfig
-            echo "KMI=$kmi"
+          if [ ! -z "${{ inputs.version }}" ]; then
+            echo "版本号不为空: ${{ inputs.version }}"
+            
+            # Hapus semua prefix android dan angka dari setlocalversion
+            sed -i 's/-android[0-9]*-[0-9]*//g' ./scripts/setlocalversion
+            sed -i 's/^file_localversion=.*android.*/file_localversion=""/' ./scripts/setlocalversion
+            sed -i 's/android[0-9]*-[0-9]*-//g' ./scripts/setlocalversion
+            
+            # Set CONFIG_LOCALVERSION hanya dengan nama kernel
+            sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"-${{ inputs.version }}\"/" ./arch/arm64/configs/gki_defconfig
+            
+            echo "✅ CONFIG_LOCALVERSION yang diset:"
+            grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
+            
+          elif [ ! -f "../build/build.sh" ]; then
+            echo "版本号为空, menggunakan default tanpa prefix android"
+            
+            # Hapus semua prefix android
+            sed -i 's/-android[0-9]*-[0-9]*//g' ./scripts/setlocalversion
+            sed -i 's/^file_localversion=.*android.*/file_localversion=""/' ./scripts/setlocalversion
+            sed -i 's/android[0-9]*-[0-9]*-//g' ./scripts/setlocalversion
+            
+            if [ "${{ inputs.kernel_version }}" = "6.6" ]; then
+              kmi="-g$(git rev-parse --verify HEAD | cut -c1-13)"
+              sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"${kmi}\"/" ./arch/arm64/configs/gki_defconfig
+              echo "KMI untuk 6.6: $kmi"
+            fi
+            
+            if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
+              kmi="-g$(git rev-parse --verify HEAD | cut -c1-13)"
+              sed -i "\$s|echo \"\$res\"|echo \"$kmi\"|" ./scripts/setlocalversion
+              echo "KMI untuk 6.1: $kmi"
+            fi
+            
+            echo "✅ CONFIG_LOCALVERSION yang diset:"
+            grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
           fi
           
 
