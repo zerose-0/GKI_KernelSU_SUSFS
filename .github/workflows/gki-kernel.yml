@@ -845,3 +845,54 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
+
+      - name: Kirim Notifikasi dan File ke Telegram
+        if: success()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Kirim notifikasi selesai
+          TEXT="✅ Build Selesai%0A%0A"
+          TEXT+="📱 Android: ${{ inputs.android_version }}%0A"
+          TEXT+="🔧 Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A"
+          TEXT+="⚙️ Variant: ${{ inputs.kernelsu_variant }}%0A"
+          TEXT+="📅 Patch: ${{ inputs.os_patch_level }}"
+          
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d text="${TEXT}"
+          
+          sleep 2
+          
+          # Kirim file AnyKernel3
+          for ZIP in *AnyKernel3.zip; do
+            if [ -f "$ZIP" ]; then
+              curl -F chat_id="${CHAT_ID}" \
+                   -F document=@"$ZIP" \
+                   -F caption="📦 AnyKernel3 - ${{ inputs.kernelsu_variant }}" \
+                   "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+            fi
+          done
+          
+          # Kirim boot images
+          for IMG in *boot*.img; do
+            if [ -f "$IMG" ]; then
+              IMGNAME=$(basename "$IMG")
+              curl -F chat_id="${CHAT_ID}" \
+                   -F document=@"$IMG" \
+                   -F caption="🖼️ ${IMGNAME}" \
+                   "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+              sleep 1
+            fi
+          done
+
+      - name: Notifikasi Build Gagal
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d text="❌ Build Gagal: ${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}"  
