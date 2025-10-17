@@ -862,36 +862,41 @@ jobs:
           path: ./AnyKernel3/*
 
       - name: Send to Telegram
+        if: success() && inputs.onlyAk3 == false
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          FILE=$(find out/AnyKernel3 -name "*.zip" -type f | head -n 1)
+          FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
           
-          if [ -z "$FILE" ]; then
+          if [ ! -f "$FILE" ]; then
             echo "❌ File tidak ditemukan!"
+            ls -lah
             exit 1
           fi
           
-          case "$DRIVER" in
+          case "${{ inputs.kernelsu_variant }}" in
             "SukiSU")
               DRIVER_NAME="SukiSU (Dev(开发))"
               ;;
-            "KernelSU")
+            "Next")
+              DRIVER_NAME="KernelSU-Next"
+              ;;
+            "MKSU")
+              DRIVER_NAME="MKSU"
+              ;;
+            "Official")
               DRIVER_NAME="KernelSU"
               ;;
-            "APatch")
-              DRIVER_NAME="APatch"
-              ;;
             *)
-              DRIVER_NAME="$DRIVER"
+              DRIVER_NAME="${{ inputs.kernelsu_variant }}"
               ;;
           esac
           
-          SUSFS_VERSION=$(grep -rh "SUSFS_VERSION" --include="*.h" --include="*.c" KernelSU/ 2>/dev/null | grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          SUSFS_VERSION=$(grep -rh "SUSFS_VERSION" --include="*.h" --include="*.c" $CONFIG/KernelSU* 2>/dev/null | grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
           
           if [ -z "$SUSFS_VERSION" ]; then
-            SUSFS_VERSION=$(grep -rh "susfs.*version" --include="*.h" KernelSU/ 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+            SUSFS_VERSION=$(grep -rh "susfs.*version" --include="*.h" $CONFIG/KernelSU* 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
           fi
           
           if [ -z "$SUSFS_VERSION" ]; then
@@ -899,16 +904,16 @@ jobs:
           fi
           
           CAPTION="📋 Detail Build:
-          ├ Android: android15
-          ├ Kernel: 6.6.56
-          ├ OS Patch: 2024-11
+          ├ Android: ${{ inputs.android_version }}
+          ├ Kernel: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}
+          ├ OS Patch: ${{ inputs.os_patch_level }}
           ├ Driver: ${DRIVER_NAME}
           └ SUSFS: ${SUSFS_VERSION}
           
           ⚙️ Fitur:
           ├ LZ4 V1.10.0 & LZ4KD (ZRAM)
           ├ Baseband Guard (BBG)
-          └ BBR"
+          └ BBR
           
           curl -F document=@"$FILE" -F caption="$CAPTION" https://api.telegram.org/bot${BOT_TOKEN}/sendDocument?chat_id=${CHAT_ID}
           
@@ -918,9 +923,3 @@ jobs:
             echo "❌ Gagal mengirim file ke Telegram!"
             exit 1
           fi
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.DRIVER }}_kernel-android15-6.6-56-Anykernel3
-          path: out/AnyKernel3/*.zip
