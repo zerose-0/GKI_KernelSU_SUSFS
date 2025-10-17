@@ -582,22 +582,22 @@ jobs:
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
 
-          # Buat script setlocalversion yang bersih
-          cat > ./scripts/setlocalversion << 'EOF'
-          #!/bin/sh
-          # SPDX-License-Identifier: GPL-2.0
-          # Custom clean version - no suffix
-          echo ""
-          EOF
+          # Hapus suffix android tanpa merusak fungsi depmod
+          if [ "${{ inputs.kernel_version }}" == "6.1" ]; then
+            # Untuk kernel 6.1
+            sed -i '/^android_release=/d' ./scripts/setlocalversion
+            sed -i '/^kmi=/d' ./scripts/setlocalversion
+          elif [ "${{ inputs.kernel_version }}" == "6.6" ]; then
+            # Untuk kernel 6.6
+            sed -i 's/^file_localversion=.*/file_localversion=""/' ./scripts/setlocalversion
+          fi
 
-          chmod +x ./scripts/setlocalversion
-
-          # Set nama kernel sesuai input
+          # Set custom kernel name jika ada input
           if [ ! -z "${{ inputs.version }}" ]; then
-            echo "Menggunakan nama kernel custom: ${{ inputs.version }}"
+            echo "Menggunakan nama kernel: ${{ inputs.version }}"
             sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"${{ inputs.version }}\"/" ./arch/arm64/configs/gki_defconfig
           else
-            echo "Menggunakan nama kernel default (tanpa suffix)"
+            echo "Menggunakan nama kernel default"
             sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"\"/" ./arch/arm64/configs/gki_defconfig
           fi   
 
