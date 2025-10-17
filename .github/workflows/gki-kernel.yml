@@ -846,95 +846,62 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      # Verifikasi file sebelum kirim
-      - name: Verifikasi File ZIP
-        if: inputs.onlyAk3 == false
-        run: |
-          echo "=== Daftar File di Root Directory ==="
-          ls -lah *.zip || echo "Tidak ada file ZIP ditemukan"
-          
-          echo "=== Cek File Spesifik ==="
-          FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          if [ -f "$FILE" ]; then
-            echo "✅ File ditemukan: $FILE"
-            echo "📦 Ukuran: $(du -h "$FILE" | cut -f1)"
-          else
-            echo "❌ File tidak ditemukan: $FILE"
-            exit 1
-          fi
+      - name: Send to Telegram
+  env:
+    BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    REPO: ${{ github.repository }}
+    BRANCH: ${{ github.ref_name }}
+    COMMIT: ${{ github.sha }}
+    RUN_ID: ${{ github.run_id }}
+  run: |
+    FILE=$(find out/AnyKernel3 -name "*.zip" -type f | head -n 1)
+    
+    if [ -z "$FILE" ]; then
+      echo "❌ File tidak ditemukan!"
+      exit 1
+    fi
+    
+    # Deteksi versi SUSFS (sesuaikan path dengan lokasi file SUSFS Anda)
+    SUSFS_VERSION=$(grep -oP 'SUSFS_VERSION.*"\K[^"]+' KernelSU/kernel/susfs.h 2>/dev/null || echo "Unknown")
+    
+    # Format notifikasi
+    CAPTION="✅ Build GKI Kernel (AnyKernel3 Only) Berhasil!
 
-      # Kirim notifikasi sukses dengan file ZIP (menggunakan curl langsung)
-      - name: Kirim Notifikasi dan Hasil Build ke Telegram
-        if: success() && inputs.onlyAk3 == false
-        run: |
-          FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          
-          MESSAGE="<b>✅ Build GKI Kernel Berhasil!</b>%0A%0A"
-          MESSAGE="${MESSAGE}<b>Repositori:</b> ${{ github.repository }}%0A"
-          MESSAGE="${MESSAGE}<b>Branch:</b> ${{ github.ref_name }}%0A"
-          MESSAGE="${MESSAGE}<b>Commit:</b> <code>${{ github.sha }}</code>%0A"
-          MESSAGE="${MESSAGE}<b>Workflow:</b> <a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Lihat Detail</a>%0A%0A"
-          MESSAGE="${MESSAGE}<b>📋 Detail Build:</b>%0A"
-          MESSAGE="${MESSAGE}• <b>Android:</b> ${{ inputs.android_version }}%0A"
-          MESSAGE="${MESSAGE}• <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A"
-          MESSAGE="${MESSAGE}• <b>OS Patch:</b> ${{ inputs.os_patch_level }}%0A"
-          MESSAGE="${MESSAGE}• <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})%0A%0A"
-          MESSAGE="${MESSAGE}<b>⚙️ Fitur:</b>%0A"
-          MESSAGE="${MESSAGE}• ZRAM: ${{ inputs.use_zram && '✅' || '❌' }}%0A"
-          MESSAGE="${MESSAGE}• BBG: ${{ inputs.use_bbg && '✅' || '❌' }}%0A"
-          MESSAGE="${MESSAGE}• KPM: ${{ inputs.use_kpm && '✅' || '❌' }}%0A"
-          MESSAGE="${MESSAGE}• OnePlus Support: ${{ inputs.supp_op && '✅' || '❌' }}%0A%0A"
-          MESSAGE="${MESSAGE}📦 File hasil build terlampir dalam pesan ini"
-          
-          curl -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -F document=@"$FILE" \
-               -F caption="$MESSAGE" \
-               -F parse_mode="HTML" \
-               https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument
+Repositori: ${REPO}
+Branch: ${BRANCH}
+Commit: ${COMMIT:0:7}
+Download: https://github.com/${REPO}/actions/runs/${RUN_ID}
 
-      # Kirim notifikasi untuk build onlyAK3 (tanpa file)
-      - name: Kirim Notifikasi Build OnlyAK3
-        if: success() && inputs.onlyAk3 == true
-        run: |
-          MESSAGE="<b>✅ Build GKI Kernel (AnyKernel3 Only) Berhasil!</b>%0A%0A"
-          MESSAGE="${MESSAGE}<b>Repositori:</b> ${{ github.repository }}%0A"
-          MESSAGE="${MESSAGE}<b>Branch:</b> ${{ github.ref_name }}%0A"
-          MESSAGE="${MESSAGE}<b>Commit:</b> <code>${{ github.sha }}</code>%0A"
-          MESSAGE="${MESSAGE}<b>Download:</b> <a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Unduh dari Artifacts</a>%0A%0A"
-          MESSAGE="${MESSAGE}<b>📋 Detail Build:</b>%0A"
-          MESSAGE="${MESSAGE}• <b>Android:</b> ${{ inputs.android_version }}%0A"
-          MESSAGE="${MESSAGE}• <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A"
-          MESSAGE="${MESSAGE}• <b>OS Patch:</b> ${{ inputs.os_patch_level }}%0A"
-          MESSAGE="${MESSAGE}• <b>KernelSU:</b> ${{ inputs.kernelsu_variant }} (${{ inputs.kernelsu_branch }})%0A%0A"
-          MESSAGE="${MESSAGE}<b>⚙️ Fitur:</b>%0A"
-          MESSAGE="${MESSAGE}• ZRAM: ${{ inputs.use_zram && '✅' || '❌' }}%0A"
-          MESSAGE="${MESSAGE}• BBG: ${{ inputs.use_bbg && '✅' || '❌' }}%0A"
-          MESSAGE="${MESSAGE}• KPM: ${{ inputs.use_kpm && '✅' || '❌' }}%0A%0A"
-          MESSAGE="${MESSAGE}⚠️ File AnyKernel3 tersedia di GitHub Actions Artifacts"
-          
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
-               -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -d text="$MESSAGE" \
-               -d parse_mode="HTML" \
-               -d disable_web_page_preview=true
+📋 Detail Build:
+• Android: android15
+• Kernel: 6.6.56
+• OS Patch: 2024-11
+• Driver: SukiSU (Dev(开发))
+• SUSFS: ${SUSFS_VERSION}
 
-      # Kirim notifikasi jika build gagal
-      - name: Kirim Notifikasi Build Gagal
-        if: failure()
-        run: |
-          MESSAGE="<b>❌ Build GKI Kernel Gagal!</b>%0A%0A"
-          MESSAGE="${MESSAGE}<b>Repositori:</b> ${{ github.repository }}%0A"
-          MESSAGE="${MESSAGE}<b>Branch:</b> ${{ github.ref_name }}%0A"
-          MESSAGE="${MESSAGE}<b>Commit:</b> <code>${{ github.sha }}</code>%0A"
-          MESSAGE="${MESSAGE}<b>Logs:</b> <a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Lihat Error Detail</a>%0A%0A"
-          MESSAGE="${MESSAGE}<b>⚙️ Konfigurasi Build:</b>%0A"
-          MESSAGE="${MESSAGE}• <b>Android:</b> ${{ inputs.android_version }}%0A"
-          MESSAGE="${MESSAGE}• <b>Kernel:</b> ${{ inputs.kernel_version }}.${{ inputs.sub_level }}%0A"
-          MESSAGE="${MESSAGE}• <b>KernelSU:</b> ${{ inputs.kernelsu_variant }}%0A%0A"
-          MESSAGE="${MESSAGE}Silakan cek logs untuk detail error"
-          
-          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
-               -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -d text="$MESSAGE" \
-               -d parse_mode="HTML" \
-               -d disable_web_page_preview=true
+⚙️ Fitur:
+• LZ4 V1.10.0 & LZ4KD (ZRAM)
+• Kernel-Level Baseband Protection
+   Support
+• BBR
+
+⚠️ File AnyKernel3 tersedia di GitHub Actions Artifacts"
+    
+    # Kirim file ke Telegram
+    curl -F document=@"$FILE" \
+         -F caption="$CAPTION" \
+         https://api.telegram.org/bot${BOT_TOKEN}/sendDocument?chat_id=${CHAT_ID}
+    
+    if [ $? -eq 0 ]; then
+      echo "✅ File berhasil dikirim ke Telegram!"
+    else
+      echo "❌ Gagal mengirim file ke Telegram!"
+      exit 1
+    fi
+
+- name: Upload Artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: SukiSU_kernel-android15-6.6-56-Anykernel3
+    path: out/AnyKernel3/*.zip
