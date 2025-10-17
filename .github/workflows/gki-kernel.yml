@@ -612,48 +612,48 @@ jobs:
 
           fi
 
-      - name: 配置内核名称(常规构建)
+        - name: 配置内核名称(常规构建)
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
 
           if [ ! -z "${{ inputs.version }}" ]; then
-            echo "版本号不为空: ${{ inputs.version }}"
-            
-            # Hapus semua prefix android dan angka dari setlocalversion
-            sed -i 's/-android[0-9]*-[0-9]*//g' ./scripts/setlocalversion
-            sed -i 's/^file_localversion=.*android.*/file_localversion=""/' ./scripts/setlocalversion
-            sed -i 's/android[0-9]*-[0-9]*-//g' ./scripts/setlocalversion
-            
-            # Set CONFIG_LOCALVERSION hanya dengan nama kernel
-            sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"-${{ inputs.version }}\"/" ./arch/arm64/configs/gki_defconfig
-            
-            echo "✅ CONFIG_LOCALVERSION yang diset:"
-            grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
-            
-          elif [ ! -f "../build/build.sh" ]; then
-            echo "版本号为空, menggunakan default tanpa prefix android"
-            
-            # Hapus semua prefix android
-            sed -i 's/-android[0-9]*-[0-9]*//g' ./scripts/setlocalversion
-            sed -i 's/^file_localversion=.*android.*/file_localversion=""/' ./scripts/setlocalversion
-            sed -i 's/android[0-9]*-[0-9]*-//g' ./scripts/setlocalversion
-            
-            if [ "${{ inputs.kernel_version }}" = "6.6" ]; then
-              kmi="-g$(git rev-parse --verify HEAD | cut -c1-13)"
-              sed -i "/^CONFIG_LOCALVERSION=/ s/=\"[^\"]*\"/=\"${kmi}\"/" ./arch/arm64/configs/gki_defconfig
-              echo "KMI untuk 6.6: $kmi"
-            fi
-            
-            if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
-              kmi="-g$(git rev-parse --verify HEAD | cut -c1-13)"
-              sed -i "\$s|echo \"\$res\"|echo \"$kmi\"|" ./scripts/setlocalversion
-              echo "KMI untuk 6.1: $kmi"
-            fi
-            
-            echo "✅ CONFIG_LOCALVERSION yang diset:"
-            grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
+            KERNEL_NAME="${{ inputs.version }}"
+            echo "✅ Menggunakan nama custom: ${KERNEL_NAME}"
+          else
+            KERNEL_NAME="g$(git rev-parse --verify HEAD | cut -c1-13)"
+            echo "✅ Menggunakan nama default: ${KERNEL_NAME}"
           fi
+          
+          echo "================================================"
+          echo "🔧 HARDCODE MODE - Menghapus semua prefix android"
+          echo "================================================"
+          
+          cat > ./scripts/setlocalversion << 'EOF'
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Custom setlocalversion - force empty output
+echo ""
+EOF
+          
+          chmod +x ./scripts/setlocalversion
+          
+          sed -i "/^CONFIG_LOCALVERSION=/d" ./arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LOCALVERSION=\"-${KERNEL_NAME}\"" >> ./arch/arm64/configs/gki_defconfig
+          
+          echo ""
+          echo "✅ Verifikasi konfigurasi:"
+          echo "------------------------"
+          echo "📋 CONFIG_LOCALVERSION:"
+          grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
+          
+          echo ""
+          echo "📋 Isi setlocalversion script:"
+          cat ./scripts/setlocalversion
+          
+          echo ""
+          echo "✅ Konfigurasi selesai!"
+          echo "📌 Hasil: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${KERNEL_NAME}"
           
 
       # - name: 配置内核名称(快速构建)
