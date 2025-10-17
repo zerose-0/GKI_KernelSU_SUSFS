@@ -686,7 +686,20 @@ jobs:
       #                 exit 1
       #                 ;;
       #         esac
-            
+
+      - name: Konfigurasi Bazel untuk build clean
+        if: ${{ inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
+        run: |
+          cd "$CONFIG"
+          
+          cat > .bazelrc << 'EOFBAZEL'
+          build --action_env=BUILD_NUMBER=
+          build --action_env=KMI_GENERATION=
+          build --action_env=KBUILD_BUILD_VERSION=1
+          EOFBAZEL
+          
+          echo "📋 Bazel config dibuat:"
+          cat .bazelrc      
 
       - name: Build with retry
         uses: nick-fields/retry@v3
@@ -698,21 +711,50 @@ jobs:
             set -e
             set -x
             cd "$CONFIG"
-
+            
             sed -i 's/BUILD_SYSTEM_DLKM=1/BUILD_SYSTEM_DLKM=0/' ./common/build.config.gki.aarch64
             sed -i '/MODULES_ORDER=android\/gki_aarch64_modules/d' ./common/build.config.gki.aarch64
             sed -i '/KMI_SYMBOL_LIST_STRICT_MODE/d' ./common/build.config.gki.aarch64
-
             
+            unset BUILD_NUMBER
+            unset KMI_GENERATION
+            unset KBUILD_BUILD_VERSION
             
             echo "Building the kernel..."
             if [ -f "build/build.sh" ]; then
-              LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
+              LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 BUILD_NUMBER="" KMI_GENERATION="" build/build.sh CC="/usr/bin/ccache clang" || exit 1
             else
-              tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
-              echo "debug:输出内核版本号"
+              tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin --action_env=BUILD_NUMBER="" --action_env=KMI_GENERATION="" //common:kernel_aarch64_dist || exit 1
+              echo "🔍 Debug: Memeriksa versi kernel yang dihasilkan"
               strings ./bazel-bin/common/kernel_aarch64/Image | grep 'Linux version'
             fi
+     
+      - name: Verifikasi Nama Kernel
+        run: |
+          echo "🔍 Memverifikasi nama kernel yang dihasilkan..."
+          
+          if [ "${{ inputs.android_version }}" == "android14" ] || [ "${{ inputs.android_version }}" == "android15" ]; then
+            KERNEL_IMAGE="$CONFIG/bazel-bin/common/kernel_aarch64/Image"
+          else
+            KERNEL_IMAGE="$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image"
+          fi
+          
+          if [ -f "$KERNEL_IMAGE" ]; then
+            echo "✅ Kernel image ditemukan"
+            KERNEL_VERSION=$(strings "$KERNEL_IMAGE" | grep 'Linux version' | head -n1)
+            echo "📌 Versi kernel: $KERNEL_VERSION"
+            
+            if echo "$KERNEL_VERSION" | grep -iq "android"; then
+              echo "⚠️  WARNING: Masih ada prefix 'Android' di versi kernel!"
+              echo "   Versi: $KERNEL_VERSION"
+            else
+              echo "✅ BERHASIL! Tidak ada prefix 'Android'"
+              echo "   Versi: $KERNEL_VERSION"
+            fi
+          else
+            echo "❌ Kernel image tidak ditemukan di: $KERNEL_IMAGE"
+            ls -la $(dirname "$KERNEL_IMAGE") || true
+          fi
 
       - name: 修补 Image 文件(仅限sukisu)
         if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
