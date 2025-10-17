@@ -626,39 +626,43 @@ jobs:
           fi
           
           echo "================================================"
-          echo "🔧 HARDCODE MODE - Menghapus semua prefix android"
+          echo "🔧 Menghapus prefix Android dari versi kernel"
           echo "================================================"
           
-          # HARDCODE: Ganti seluruh isi setlocalversion dengan script kosong
-          cat > ./scripts/setlocalversion << 'EOF'
+          cat > ./scripts/setlocalversion << 'EOFSCRIPT'
           #!/bin/sh
-          # SPDX-License-Identifier: GPL-2.0
-          #
-          # Custom setlocalversion - force empty output
-          # This ensures no extra version strings are appended
-          
-          echo
-          EOF
+          exit 0
+          EOFSCRIPT
           
           chmod +x ./scripts/setlocalversion
           
-          # Set CONFIG_LOCALVERSION dengan nama yang diinginkan
-          sed -i "/^CONFIG_LOCALVERSION=/d" ./arch/arm64/configs/gki_defconfig
+          sed -i '/CONFIG_LOCALVERSION_AUTO/d' ./arch/arm64/configs/gki_defconfig
+          echo "# CONFIG_LOCALVERSION_AUTO is not set" >> ./arch/arm64/configs/gki_defconfig
+          
+          sed -i '/^CONFIG_LOCALVERSION=/d' ./arch/arm64/configs/gki_defconfig
           echo "CONFIG_LOCALVERSION=\"-${KERNEL_NAME}\"" >> ./arch/arm64/configs/gki_defconfig
           
-          echo
+          if [ -f "build.config.gki.aarch64" ]; then
+            sed -i '/^BUILD_NUMBER=/d' build.config.gki.aarch64
+            sed -i '/^KMI_GENERATION=/d' build.config.gki.aarch64
+            echo "BUILD_NUMBER=" >> build.config.gki.aarch64
+            echo "KMI_GENERATION=" >> build.config.gki.aarch64
+          fi
+          
+          echo ""
           echo "✅ Verifikasi konfigurasi:"
           echo "------------------------"
           echo "📋 CONFIG_LOCALVERSION:"
-          grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
-          
-          echo
-          echo "📋 Isi setlocalversion script:"
+          grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig || echo "Warning: tidak ditemukan"
+          echo ""
+          echo "📋 CONFIG_LOCALVERSION_AUTO:"
+          grep "CONFIG_LOCALVERSION_AUTO" ./arch/arm64/configs/gki_defconfig || echo "Disabled"
+          echo ""
+          echo "📋 setlocalversion script:"
           cat ./scripts/setlocalversion
-          
-          echo
+          echo ""
           echo "✅ Konfigurasi selesai!"
-          echo "📌 Hasil akhir: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${KERNEL_NAME}"
+          echo "📌 Target: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${KERNEL_NAME}"
 
       # - name: 配置内核名称(快速构建)
       #   if: ${{ inputs.fast }}
