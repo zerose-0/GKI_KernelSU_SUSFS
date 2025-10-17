@@ -611,8 +611,8 @@ jobs:
             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
 
           fi
-          
-      - name: 配置内核名称(常规构建)
+
+        - name: 配置内核名称(常规构建)
         run: |
           echo "更改为配置目录: $CONFIG..."
           cd "$CONFIG/common"
@@ -655,6 +655,7 @@ jobs:
             grep "CONFIG_LOCALVERSION" ./arch/arm64/configs/gki_defconfig
           fi
           
+       
 
       # - name: 配置内核名称(快速构建)
       #   if: ${{ inputs.fast }}
