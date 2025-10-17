@@ -869,3 +869,105 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
+
+      - name: 📤 Kirim ke Telegram (Pribadi)
+        if: success() && inputs.onlyAk3 == false
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FILE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+          
+          if [ ! -f "$FILE" ]; then
+            echo "❌ File tidak ditemukan!"
+            ls -lah
+            exit 1
+          fi
+          
+          case "${{ inputs.kernelsu_variant }}" in
+            "SukiSU")
+              DRIVER_NAME="SukiSU"
+              ;;
+            "Next")
+              DRIVER_NAME="KernelSU-Next"
+              ;;
+            "MKSU")
+              DRIVER_NAME="MKSU"
+              ;;
+            "Official")
+              DRIVER_NAME="KernelSU Official"
+              ;;
+            *)
+              DRIVER_NAME="${{ inputs.kernelsu_variant }}"
+              ;;
+          esac
+          
+          SUSFS_VERSION=$(grep -rh "SUSFS_VERSION" --include="*.h" --include="*.c" $CONFIG/KernelSU* 2>/dev/null | grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          
+          if [ -z "$SUSFS_VERSION" ]; then
+            SUSFS_VERSION=$(grep -rh "susfs.*version" --include="*.h" $CONFIG/KernelSU* 2>/dev/null | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          fi
+          
+          if [ -z "$SUSFS_VERSION" ]; then
+            SUSFS_VERSION="1.5.2"
+          fi
+          
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "Build from workflow")
+          COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" 2>/dev/null || echo "GitHub Actions")
+          BUILD_TIME=$(TZ='Asia/Jakarta' date '+%d %B %Y, %H:%M WIB')
+          
+          CAPTION="✅ <b>Build Kernel Berhasil!</b>
+          
+          📦 <b>Detail Build:</b>
+          ├ Android: <code>${{ inputs.android_version }}</code>
+          ├ Kernel: <code>${{ inputs.kernel_version }}.${{ inputs.sub_level }}</code>
+          ├ OS Patch: <code>${{ inputs.os_patch_level }}</code>
+          ├ Driver: <b>${DRIVER_NAME}</b>
+          └ SUSFS: <code>${SUSFS_VERSION}</code>
+          
+          ⚙️ <b>Fitur:</b>
+          ├ ✓ LZ4 V1.10.0 & LZ4KD (ZRAM)
+          ├ ✓ Baseband Guard (BBG)
+          ├ ✓ BBR Algorithm
+          └ ✓ KPM Support
+          
+          📝 <b>Build Info:</b>
+          ├ Waktu: <code>${BUILD_TIME}</code>
+          ├ Commit: <code>${COMMIT_MSG}</code>
+          └ Author: <code>${COMMIT_AUTHOR}</code>
+          
+          📥 <b>File:</b> <code>${FILE}</code>
+          📊 Size: <code>$(du -h "$FILE" | cut -f1)</code>
+          
+          🔗 <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Lihat Workflow Run</a>"
+          
+          echo "📤 Mengirim file ke Telegram..."
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${CHAT_ID}" \
+            -F "document=@${FILE}" \
+            -F "caption=${CAPTION}" \
+            -F "parse_mode=HTML")
+          
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "✅ File berhasil dikirim ke Telegram!"
+            
+            if [ -f "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img" ]; then
+              BOOT_MSG="📱 <b>Boot Images tersedia:</b>
+          
+              ├ boot.img ($(du -h "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img" | cut -f1))
+              ├ boot-gz.img ($(du -h "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img" | cut -f1))
+              └ boot-lz4.img ($(du -h "${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img" | cut -f1))
+          
+              💡 Download dari Artifacts di workflow run"
+              
+              curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${CHAT_ID}" \
+                -d "text=${BOOT_MSG}" \
+                -d "parse_mode=HTML" > /dev/null
+            fi
+            
+          else
+            echo "❌ Gagal mengirim file ke Telegram!"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
