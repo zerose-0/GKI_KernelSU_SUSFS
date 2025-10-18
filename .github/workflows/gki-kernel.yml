@@ -859,7 +859,8 @@ jobs:
           fi
 
       - name: Download dan Kirim ke Telegram
-        if: success()
+        continue-on-error: true
+        if: success() && steps.set-artifact-id.outputs.artifact_id != ''
         run: |
           pip3 install python-telegram-bot requests --quiet
 
@@ -939,14 +940,12 @@ jobs:
               with zipfile.ZipFile(artifact_zip, 'r') as zip_ref:
                   zip_ref.extractall("./extracted")
               
-              # Cari ZIP
               ak3_files = glob.glob("./extracted/*AnyKernel3*.zip")
               
               if ak3_files:
                   print(f"✅ Found: {ak3_files[0]}")
                   return ak3_files[0]
               
-              # Buat ZIP dari extracted
               print("📦 Creating ZIP...")
               anykernel_zip = f"{KSU_VARIANT}_kernel-android15-{KERNEL_VER}-AnyKernel3.zip"
               
@@ -972,10 +971,12 @@ jobs:
           ```
 
           📝 *Features:*
-          `[+] LZ4 v1.10.0 & LZ4KD (ZRAM)`
-          `[+] BBR Algorithm + ECN Support`
-          `[+] TMPFS XATTR + POSIX ACL Support`
-          `[+] Kernel-level Baseband Protection`"""
+          ```
+          [+] LZ4 v1.10.0 & LZ4KD (ZRAM)
+          [+] BBR Algorithm + ECN Support
+          [+] TMPFS XATTR + POSIX ACL Support
+          [+] Kernel-level Baseband Protection Support
+          ```"""
               
               zip_file = download_artifact()
               
@@ -998,14 +999,14 @@ jobs:
                           document=f,
                           filename=os.path.basename(zip_file),
                           caption=caption,
-                          parse_mode='MarkdownV2'
+                          parse_mode='Markdown'
                       )
                   print("✅ Terkirim!")
                   return True
               except Exception as e:
                   print(f"⚠️ Error: {e}")
                   try:
-                      caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
+                      caption_plain = caption.replace('```', '').replace('*', '')
                       with open(zip_file, 'rb') as f:
                           await bot.send_document(
                               chat_id=CHAT_ID,
@@ -1019,8 +1020,7 @@ jobs:
                       print(f"❌ Gagal: {e2}")
                       return False
 
-          success = asyncio.run(send_zip())
-          exit(0 if success else 1)
+          asyncio.run(send_zip())
           PYEOF
 
           python3 telegram_sender.py
