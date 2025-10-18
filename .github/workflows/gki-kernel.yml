@@ -846,7 +846,7 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Kirim Notifikasi dan File ke Telegram
+      - name: Kirim Notifikasi dan File ZIP ke Telegram
         if: success()
         run: |
           # Install library
@@ -866,6 +866,7 @@ jobs:
           KERNEL_VER = os.environ.get("INPUT_KERNEL_VERSION") + "." + os.environ.get("INPUT_SUB_LEVEL")
           KSU_VARIANT = os.environ.get("INPUT_KERNELSU_VARIANT")
           CONFIG_DIR = os.environ.get("CONFIG")
+          MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
           def get_ksu_version():
               ksu_dirs = {"Next": "KernelSU-Next", "SukiSU": "KernelSU", "Official": "KernelSU", "MKSU": "KernelSU"}
@@ -892,12 +893,19 @@ jobs:
                   return "v1.5.12"
               return "N/A"
 
-          async def send_files():
+          def format_size(bytes):
+              for unit in ['B', 'KB', 'MB', 'GB']:
+                  if bytes < 1024.0:
+                      return f"{bytes:.2f} {unit}"
+                  bytes /= 1024.0
+              return f"{bytes:.2f} TB"
+
+          async def send_zip():
               bot = Bot(token=BOT_TOKEN)
               driver_ksu = get_ksu_version()
               susfs_info = get_susfs_info()
               
-              # Caption untuk semua file
+              # Caption
               caption = f"""```
           KernelVer: {KERNEL_VER}
           DriverKSU: {driver_ksu}
@@ -910,62 +918,63 @@ jobs:
           `[+] TMPFS XATTR + POSIX ACL Support`
           `[+] Kernel-level Baseband Protection`"""
               
-              files_sent = 0
+              # Cari file ZIP
+              zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*kernel*.zip", "*.zip"]
               
-              # Kirim file ZIP AnyKernel3
-              zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*.zip"]
               for pattern in zip_patterns:
-                  for zip_file in glob.glob(pattern):
-                      if "AnyKernel3" in zip_file:
+                  zip_files = glob.glob(pattern)
+                  for zip_file in zip_files:
+                      # Skip file yang bukan kernel
+                      if "telegram_sender" in zip_file.lower():
+                          continue
+                      
+                      file_size = os.path.getsize(zip_file)
+                      
+                      # Cek ukuran
+                      if file_size > MAX_FILE_SIZE:
+                          print(f"⚠️ File terlalu besar: {zip_file} ({format_size(file_size)})")
+                          continue
+                      
+                      # Kirim file
+                      try:
+                          print(f"📦 Mengirim: {zip_file} ({format_size(file_size)})")
+                          with open(zip_file, 'rb') as f:
+                              await bot.send_document(
+                                  chat_id=CHAT_ID, 
+                                  document=f, 
+                                  filename=os.path.basename(zip_file), 
+                                  caption=caption, 
+                                  parse_mode='MarkdownV2'
+                              )
+                          print(f"✅ Berhasil terkirim: {zip_file}")
+                          return True
+                      except Exception as e:
+                          print(f"⚠️ Error dengan MarkdownV2: {e}")
+                          # Fallback plain text
                           try:
-                              print(f"📦 Mengirim ZIP: {zip_file}")
+                              caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
                               with open(zip_file, 'rb') as f:
-                                  await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(zip_file), caption=caption, parse_mode='MarkdownV2')
-                              print(f"✅ Terkirim: {zip_file}")
-                              files_sent += 1
-                              await asyncio.sleep(2)
-                              break
-                          except Exception as e:
-                              print(f"⚠️ Error MarkdownV2, coba plain text...")
-                              try:
-                                  caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
-                                  with open(zip_file, 'rb') as f:
-                                      await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(zip_file), caption=caption_plain)
-                                  print(f"✅ Terkirim (plain): {zip_file}")
-                                  files_sent += 1
-                                  await asyncio.sleep(2)
-                                  break
-                              except Exception as e2:
-                                  print(f"❌ Gagal kirim ZIP: {e2}")
-                  if files_sent > 0:
-                      break
+                                  await bot.send_document(
+                                      chat_id=CHAT_ID, 
+                                      document=f, 
+                                      filename=os.path.basename(zip_file), 
+                                      caption=caption_plain
+                                  )
+                              print(f"✅ Berhasil terkirim (plain text): {zip_file}")
+                              return True
+                          except Exception as e2:
+                              print(f"❌ Gagal mengirim {zip_file}: {e2}")
+                              continue
               
-              # Kirim boot images
-              boot_images = glob.glob("*boot*.img")
-              for img_file in boot_images:
-                  try:
-                      print(f"🖼️ Mengirim IMG: {img_file}")
-                      with open(img_file, 'rb') as f:
-                          await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(img_file), caption=f"🖼️ Boot Image")
-                      print(f"✅ Terkirim: {img_file}")
-                      files_sent += 1
-                      await asyncio.sleep(1)
-                  except Exception as e:
-                      print(f"❌ Gagal kirim IMG {img_file}: {e}")
-              
-              if files_sent == 0:
-                  print("❌ Tidak ada file yang berhasil dikirim")
-                  print("📂 File yang tersedia:")
-                  for f in glob.glob("*"):
-                      if os.path.isfile(f):
-                          print(f"  - {f}")
-                  return False
-              
-              print(f"✅ Total {files_sent} file terkirim")
-              return True
+              # Tidak ada file yang berhasil dikirim
+              print("\n❌ Tidak ada file ZIP yang berhasil dikirim")
+              print("📂 File ZIP yang tersedia:")
+              for f in glob.glob("*.zip"):
+                  print(f"  - {f} ({format_size(os.path.getsize(f))})")
+              return False
 
           # Run
-          success = asyncio.run(send_files())
+          success = asyncio.run(send_zip())
           sys.exit(0 if success else 1)
           PYEOF
 
