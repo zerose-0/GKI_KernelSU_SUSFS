@@ -845,3 +845,181 @@ jobs:
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
+
+      - name: Kirim Notifikasi dan File ke Telegram
+        if: success()
+        run: |
+          # Install library
+          pip3 install python-telegram-bot --quiet
+
+          # Buat script Python
+          cat > telegram_sender.py << 'PYEOF'
+          import os
+          import sys
+          import asyncio
+          import subprocess
+          import glob
+          from telegram import Bot
+
+          BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+          CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+          KERNEL_VER = os.environ.get("INPUT_KERNEL_VERSION") + "." + os.environ.get("INPUT_SUB_LEVEL")
+          KSU_VARIANT = os.environ.get("INPUT_KERNELSU_VARIANT")
+          CONFIG_DIR = os.environ.get("CONFIG")
+
+          def get_ksu_version():
+              ksu_dirs = {"Next": "KernelSU-Next", "SukiSU": "KernelSU", "Official": "KernelSU", "MKSU": "KernelSU"}
+              ksu_dir = ksu_dirs.get(KSU_VARIANT, "KernelSU")
+              ksu_path = os.path.join(CONFIG_DIR, ksu_dir)
+              
+              if not os.path.isdir(ksu_path):
+                  return f"{KSU_VARIANT} (N/A)"
+              
+              try:
+                  tag = subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'], cwd=ksu_path, stderr=subprocess.DEVNULL, universal_newlines=True).strip()
+                  return f"{KSU_VARIANT} ({tag})"
+              except:
+                  try:
+                      commit = subprocess.check_output(['git', 'rev-parse', '--short=8', 'HEAD'], cwd=ksu_path, universal_newlines=True).strip()
+                      return f"{KSU_VARIANT} ({commit})"
+                  except:
+                      return f"{KSU_VARIANT} (N/A)"
+
+          def get_susfs_info():
+              if KSU_VARIANT in ["Next", "SukiSU"]:
+                  return "v1.5.12 (Manual Hook)"
+              elif KSU_VARIANT == "Official":
+                  return "v1.5.12"
+              return "N/A"
+
+          async def send_files():
+              bot = Bot(token=BOT_TOKEN)
+              driver_ksu = get_ksu_version()
+              susfs_info = get_susfs_info()
+              
+              # Caption untuk semua file
+              caption = f"""```
+          KernelVer: {KERNEL_VER}
+          DriverKSU: {driver_ksu}
+          SUSFS ඞ: {susfs_info}
+          ```
+
+          📝 *Features:*
+          `[+] LZ4 v1.10.0 & LZ4KD (ZRAM)`
+          `[+] BBR Algorithm + ECN Support`
+          `[+] TMPFS XATTR + POSIX ACL Support`
+          `[+] Kernel-level Baseband Protection`"""
+              
+              files_sent = 0
+              
+              # Kirim file ZIP AnyKernel3
+              zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*.zip"]
+              for pattern in zip_patterns:
+                  for zip_file in glob.glob(pattern):
+                      if "AnyKernel3" in zip_file:
+                          try:
+                              print(f"📦 Mengirim ZIP: {zip_file}")
+                              with open(zip_file, 'rb') as f:
+                                  await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(zip_file), caption=caption, parse_mode='MarkdownV2')
+                              print(f"✅ Terkirim: {zip_file}")
+                              files_sent += 1
+                              await asyncio.sleep(2)
+                              break
+                          except Exception as e:
+                              print(f"⚠️ Error MarkdownV2, coba plain text...")
+                              try:
+                                  caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
+                                  with open(zip_file, 'rb') as f:
+                                      await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(zip_file), caption=caption_plain)
+                                  print(f"✅ Terkirim (plain): {zip_file}")
+                                  files_sent += 1
+                                  await asyncio.sleep(2)
+                                  break
+                              except Exception as e2:
+                                  print(f"❌ Gagal kirim ZIP: {e2}")
+                  if files_sent > 0:
+                      break
+              
+              # Kirim boot images
+              boot_images = glob.glob("*boot*.img")
+              for img_file in boot_images:
+                  try:
+                      print(f"🖼️ Mengirim IMG: {img_file}")
+                      with open(img_file, 'rb') as f:
+                          await bot.send_document(chat_id=CHAT_ID, document=f, filename=os.path.basename(img_file), caption=f"🖼️ Boot Image")
+                      print(f"✅ Terkirim: {img_file}")
+                      files_sent += 1
+                      await asyncio.sleep(1)
+                  except Exception as e:
+                      print(f"❌ Gagal kirim IMG {img_file}: {e}")
+              
+              if files_sent == 0:
+                  print("❌ Tidak ada file yang berhasil dikirim")
+                  print("📂 File yang tersedia:")
+                  for f in glob.glob("*"):
+                      if os.path.isfile(f):
+                          print(f"  - {f}")
+                  return False
+              
+              print(f"✅ Total {files_sent} file terkirim")
+              return True
+
+          # Run
+          success = asyncio.run(send_files())
+          sys.exit(0 if success else 1)
+          PYEOF
+
+          # Jalankan script
+          python3 telegram_sender.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
+          INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
+          INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
+          CONFIG: ${{ env.CONFIG }}
+
+      - name: Notifikasi Build Gagal
+        if: failure()
+        run: |
+          pip3 install python-telegram-bot --quiet
+          
+          cat > fail_notify.py << 'PYEOF'
+          import asyncio
+          import os
+          from telegram import Bot
+          
+          async def notify_fail():
+              bot = Bot(token=os.environ['TELEGRAM_BOT_TOKEN'])
+              chat_id = os.environ['TELEGRAM_CHAT_ID']
+              
+              android_ver = os.environ['INPUT_ANDROID_VERSION']
+              kernel_ver = os.environ['INPUT_KERNEL_VERSION']
+              sub_level = os.environ['INPUT_SUB_LEVEL']
+              variant = os.environ['INPUT_KERNELSU_VARIANT']
+              
+              text = f"""❌ *Build Gagal\\!*
+
+          📱 Android: {android_ver}
+          🔧 Kernel: {kernel_ver}\\.{sub_level}
+          ⚙️ Variant: {variant}"""
+              
+              try:
+                  await bot.send_message(chat_id=chat_id, text=text, parse_mode='MarkdownV2')
+              except:
+                  text_plain = f"❌ Build Gagal!\n\n📱 Android: {android_ver}\n🔧 Kernel: {kernel_ver}.{sub_level}\n⚙️ Variant: {variant}"
+                  await bot.send_message(chat_id=chat_id, text=text_plain)
+              
+              print("✅ Notifikasi gagal terkirim")
+          
+          asyncio.run(notify_fail())
+          PYEOF
+          
+          python3 fail_notify.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_ANDROID_VERSION: ${{ inputs.android_version }}
+          INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
+          INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
+          INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
