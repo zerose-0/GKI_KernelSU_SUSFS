@@ -872,6 +872,7 @@ jobs:
           import zipfile
           import glob
           from telegram import Bot
+          from telegram.request import HTTPXRequest
 
           BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
           CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
@@ -923,7 +924,7 @@ jobs:
                   "Accept": "application/vnd.github.v3+json"
               }
               
-              response = requests.get(url, headers=headers, stream=True)
+              response = requests.get(url, headers=headers, stream=True, timeout=300)
               
               if response.status_code != 200:
                   print(f"❌ Error: {response.status_code}")
@@ -960,7 +961,10 @@ jobs:
               return anykernel_zip
 
           async def send_zip():
-              bot = Bot(token=BOT_TOKEN)
+              # Increase timeout untuk upload file besar
+              request = HTTPXRequest(connection_pool_size=8, read_timeout=300, write_timeout=300, connect_timeout=60)
+              bot = Bot(token=BOT_TOKEN, request=request)
+              
               driver_ksu = get_ksu_version()
               susfs_info = get_susfs_info()
               
@@ -999,7 +1003,9 @@ jobs:
                           document=f,
                           filename=os.path.basename(zip_file),
                           caption=caption,
-                          parse_mode='Markdown'
+                          parse_mode='Markdown',
+                          read_timeout=300,
+                          write_timeout=300
                       )
                   print("✅ Terkirim!")
                   return True
@@ -1012,7 +1018,9 @@ jobs:
                               chat_id=CHAT_ID,
                               document=f,
                               filename=os.path.basename(zip_file),
-                              caption=caption_plain
+                              caption=caption_plain,
+                              read_timeout=300,
+                              write_timeout=300
                           )
                       print("✅ Terkirim (plain)!")
                       return True
@@ -1034,4 +1042,3 @@ jobs:
           INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
           INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
           CONFIG: ${{ env.CONFIG }}
-              
