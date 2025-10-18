@@ -846,17 +846,6 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Debug - List Files
-        if: success()
-        run: |
-          echo "📂 Current directory: $(pwd)"
-          echo ""
-          echo "📦 All ZIP files:"
-          find . -name "*.zip" -type f -exec ls -lh {} \;
-          echo ""
-          echo "📂 AnyKernel3 directory:"
-          ls -lah AnyKernel3/ || echo "AnyKernel3 directory not found"
-
       - name: Kirim Notifikasi dan File ZIP ke Telegram
         if: success()
         run: |
@@ -880,30 +869,124 @@ jobs:
           CONFIG_DIR = os.environ.get("CONFIG")
           MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
+          def get_kernel_version():
+              """Deteksi versi kernel dari Image file"""
+              try:
+                  # Cari file Image
+                  image_paths = [
+                      "Image",
+                      "AnyKernel3/Image",
+                      f"{CONFIG_DIR}/out/*/dist/Image",
+                      f"{CONFIG_DIR}/bazel-bin/common/kernel_aarch64/Image"
+                  ]
+                  
+                  image_file = None
+                  for pattern in image_paths:
+                      matches = glob.glob(pattern)
+                      if matches:
+                          image_file = matches[0]
+                          break
+                  
+                  if image_file and os.path.exists(image_file):
+                      # Extract version dari Image file
+                      result = subprocess.check_output(
+                          ['strings', image_file], 
+                          universal_newlines=True,
+                          stderr=subprocess.DEVNULL
+                      )
+                      
+                      # Cari baris "Linux version"
+                      for line in result.splitlines():
+                          if 'Linux version' in line:
+                              # Extract versi kernel (contoh: 6.6.30-android15-8-g...)
+                              parts = line.split()
+                              if len(parts) >= 3:
+                                  version = parts[2].split('-')[0]  # Ambil 6.6.30
+                                  return version
+                  
+                  # Fallback ke input
+                  return KERNEL_VER
+              except:
+                  return KERNEL_VER
+
           def get_ksu_version():
-              ksu_dirs = {"Next": "KernelSU-Next", "SukiSU": "KernelSU", "Official": "KernelSU", "MKSU": "KernelSU"}
+              """Deteksi versi KernelSU dari direktori git"""
+              ksu_dirs = {
+                  "Next": "KernelSU-Next", 
+                  "SukiSU": "KernelSU", 
+                  "Official": "KernelSU", 
+                  "MKSU": "KernelSU"
+              }
               ksu_dir = ksu_dirs.get(KSU_VARIANT, "KernelSU")
               ksu_path = os.path.join(CONFIG_DIR, ksu_dir)
               
               if not os.path.isdir(ksu_path):
-                  return f"{KSU_VARIANT} (N/A)"
+                  return f"{KSU_VARIANT}"
               
               try:
-                  tag = subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'], cwd=ksu_path, stderr=subprocess.DEVNULL, universal_newlines=True).strip()
-                  return f"{KSU_VARIANT} ({tag})"
+                  # Ambil commit count total
+                  commit_count = subprocess.check_output(
+                      ['git', 'rev-list', '--count', 'HEAD'], 
+                      cwd=ksu_path, 
+                      universal_newlines=True
+                  ).strip()
+                  
+                  return f"{KSU_VARIANT} ({commit_count})"
               except:
-                  try:
-                      commit = subprocess.check_output(['git', 'rev-parse', '--short=8', 'HEAD'], cwd=ksu_path, universal_newlines=True).strip()
-                      return f"{KSU_VARIANT} ({commit})"
-                  except:
-                      return f"{KSU_VARIANT} (N/A)"
+                  return f"{KSU_VARIANT}"
 
           def get_susfs_info():
-              if KSU_VARIANT in ["Next", "SukiSU"]:
-                  return "v1.5.12 (Manual Hook)"
-              elif KSU_VARIANT == "Official":
+              """Deteksi versi SUSFS dari source code"""
+              try:
+                  # Path ke file susfs.h
+                  susfs_paths = [
+                      f"{CONFIG_DIR}/common/include/linux/susfs.h",
+                      f"{CONFIG_DIR}/KernelSU/kernel/susfs.h",
+                      f"{CONFIG_DIR}/KernelSU-Next/kernel/susfs.h"
+                  ]
+                  
+                  susfs_file = None
+                  for path in susfs_paths:
+                      if os.path.exists(path):
+                          susfs_file = path
+                          break
+                  
+                  if susfs_file:
+                      with open(susfs_file, 'r') as f:
+                          content = f.read()
+                          
+                          # Cari versi SUSFS
+                          import re
+                          version_match = re.search(r'SUSFS_VERSION\s+"([^"]+)"', content)
+                          if version_match:
+                              version = version_match.group(1)
+                              
+                              # Deteksi manual hook dari config
+                              manual_hook = False
+                              if KSU_VARIANT in ["Next", "SukiSU"]:
+                                  manual_hook = True
+                              
+                              # Cek dari gki_defconfig
+                              config_path = f"{CONFIG_DIR}/common/arch/arm64/configs/gki_defconfig"
+                              if os.path.exists(config_path):
+                                  with open(config_path, 'r') as cfg:
+                                      cfg_content = cfg.read()
+                                      if 'CONFIG_KSU_MANUAL_HOOK=y' in cfg_content:
+                                          manual_hook = True
+                              
+                              if manual_hook:
+                                  return f"v{version} (Manual Hook)"
+                              else:
+                                  return f"v{version}"
+                  
+                  # Fallback default
+                  if KSU_VARIANT in ["Next", "SukiSU"]:
+                      return "v1.5.12 (Manual Hook)"
                   return "v1.5.12"
-              return "N/A"
+              except:
+                  if KSU_VARIANT in ["Next", "SukiSU"]:
+                      return "v1.5.12 (Manual Hook)"
+                  return "v1.5.12"
 
           def format_size(bytes):
               for unit in ['B', 'KB', 'MB', 'GB']:
@@ -914,29 +997,41 @@ jobs:
 
           async def send_zip():
               bot = Bot(token=BOT_TOKEN)
+              
+              # Auto-detect versi
+              kernel_ver = get_kernel_version()
               driver_ksu = get_ksu_version()
               susfs_info = get_susfs_info()
               
-              # Caption
-              caption = f"""```
-          KernelVer: {KERNEL_VER}
-          DriverKSU: {driver_ksu}
-          SUSFS ඞ: {susfs_info}
-          ```
-
-          📝 *Features:*
-          `[+] LZ4 v1.10.0 & LZ4KD (ZRAM)`
-          `[+] BBR Algorithm + ECN Support`
-          `[+] TMPFS XATTR + POSIX ACL Support`
-          `[+] Kernel-level Baseband Protection`"""
+              print(f"🔍 Deteksi otomatis:")
+              print(f"   Kernel: {kernel_ver}")
+              print(f"   KSU: {driver_ksu}")
+              print(f"   SUSFS: {susfs_info}")
               
-              # Cari file ZIP di berbagai lokasi
-              search_paths = [
-                  ".",
-                  "AnyKernel3",
-                  f"{CONFIG_DIR}/AnyKernel3",
-              ]
+              # Caption dengan format code block
+              caption = (
+                  f"```\n"
+                  f"KernelVer: {kernel_ver}\n"
+                  f"DriverKSU: {driver_ksu}\n"
+                  f"SUSFS ඞ: {susfs_info}\n"
+                  f"```\n\n"
+                  f"📝 *Features:*\n"
+                  f"```\n"
+                  f"[+] LZ4 v1.10.0 & LZ4KD (ZRAM)\n"
+                  f"[+] BBR Algorithm + ECN Support\n"
+                  f"[+] TMPFS XATTR + POSIX ACL Support\n"
+                  f"[+] Kernel-level Baseband Protection\n"
+                  f"```\n\n"
+                  f"⬇️ *How To Flash:*\n"
+                  f"```\n"
+                  f"Use flashing software, such as Horizon\n"
+                  f"Kernel Flasher for flashing the kernel\n"
+                  f"(Give root access to the Application)\n"
+                  f"```"
+              )
               
+              # Cari file ZIP
+              search_paths = [".", "AnyKernel3", f"{CONFIG_DIR}/AnyKernel3"]
               zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*kernel*.zip", "*.zip"]
               
               print("🔍 Mencari file ZIP...")
@@ -982,15 +1077,28 @@ jobs:
                               document=f, 
                               filename=os.path.basename(zip_file), 
                               caption=caption, 
-                              parse_mode='MarkdownV2'
+                              parse_mode='Markdown'
                           )
                       print(f"✅ Berhasil terkirim: {zip_file}")
                       return True
                   except Exception as e:
-                      print(f"⚠️ Error MarkdownV2: {e}")
+                      print(f"⚠️ Error Markdown: {e}")
                       # Fallback plain text
                       try:
-                          caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
+                          caption_plain = (
+                              f"KernelVer: {kernel_ver}\n"
+                              f"DriverKSU: {driver_ksu}\n"
+                              f"SUSFS ඞ: {susfs_info}\n\n"
+                              f"📝 Features:\n"
+                              f"[+] LZ4 v1.10.0 & LZ4KD (ZRAM)\n"
+                              f"[+] BBR Algorithm + ECN Support\n"
+                              f"[+] TMPFS XATTR + POSIX ACL Support\n"
+                              f"[+] Kernel-level Baseband Protection\n\n"
+                              f"⬇️ How To Flash:\n"
+                              f"Use flashing software, such as Horizon\n"
+                              f"Kernel Flasher for flashing the kernel\n"
+                              f"(Give root access to the Application)"
+                          )
                           with open(zip_file, 'rb') as f:
                               await bot.send_document(
                                   chat_id=CHAT_ID, 
@@ -1004,7 +1112,7 @@ jobs:
                           print(f"❌ Gagal: {e2}")
                           continue
               
-              # Debug: tampilkan semua file
+              # Debug
               print("\n❌ Tidak ada file ZIP yang berhasil dikirim")
               print("📂 Struktur direktori:")
               for root, dirs, files in os.walk("."):
