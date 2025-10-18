@@ -831,6 +831,7 @@ jobs:
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
       - name: 上传编译资产 (完整包)
+        id: upload-artifact-full
         if: ${{ !inputs.onlyAk3 }}
         uses: actions/upload-artifact@v4
         with:
@@ -840,15 +841,25 @@ jobs:
             *.img
 
       - name: 上传编译资产 (仅 AK3)
-        id: upload-artifact
+        id: upload-artifact-ak3
         if: ${{ inputs.onlyAk3 }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
+      - name: Set Artifact ID
+        if: success()
+        id: set-artifact-id
+        run: |
+          if [ "${{ inputs.onlyAk3 }}" == "true" ]; then
+            echo "artifact_id=${{ steps.upload-artifact-ak3.outputs.artifact-id }}" >> $GITHUB_OUTPUT
+          else
+            echo "artifact_id=${{ steps.upload-artifact-full.outputs.artifact-id }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Download dan Kirim ke Telegram
-        if: success() && !inputs.onlyAk3
+        if: success()
         run: |
           pip3 install python-telegram-bot requests --quiet
 
@@ -903,7 +914,6 @@ jobs:
               return f"{bytes_size:.2f} TB"
 
           def download_artifact():
-              """Download artifact dari GitHub"""
               print(f"📥 Downloading artifact ID: {ARTIFACT_ID}")
               
               url = f"https://api.github.com/repos/{REPO}/actions/artifacts/{ARTIFACT_ID}/zip"
@@ -915,7 +925,7 @@ jobs:
               response = requests.get(url, headers=headers, stream=True)
               
               if response.status_code != 200:
-                  print(f"❌ Error download: {response.status_code}")
+                  print(f"❌ Error: {response.status_code}")
                   return None
               
               artifact_zip = "artifact.zip"
@@ -925,20 +935,20 @@ jobs:
               
               print(f"✅ Downloaded: {format_size(os.path.getsize(artifact_zip))}")
               
-              # Extract
-              print("📦 Extracting artifact...")
+              print("📦 Extracting...")
               with zipfile.ZipFile(artifact_zip, 'r') as zip_ref:
                   zip_ref.extractall("./extracted")
               
-              # Cari file AnyKernel3.zip
+              # Cari ZIP
               ak3_files = glob.glob("./extracted/*AnyKernel3*.zip")
               
               if ak3_files:
+                  print(f"✅ Found: {ak3_files[0]}")
                   return ak3_files[0]
               
-              # Kalau tidak ada, buat dari folder extracted
-              print("📦 Creating AnyKernel3 ZIP...")
-              anykernel_zip = f"android15-{KERNEL_VER}-AnyKernel3.zip"
+              # Buat ZIP dari extracted
+              print("📦 Creating ZIP...")
+              anykernel_zip = f"{KSU_VARIANT}_kernel-android15-{KERNEL_VER}-AnyKernel3.zip"
               
               with zipfile.ZipFile(anykernel_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
                   for root, dirs, files in os.walk("./extracted"):
@@ -947,7 +957,7 @@ jobs:
                           arcname = os.path.relpath(file_path, "./extracted")
                           zipf.write(file_path, arcname)
               
-              print(f"✅ Created: {anykernel_zip} ({format_size(os.path.getsize(anykernel_zip))})")
+              print(f"✅ Created: {format_size(os.path.getsize(anykernel_zip))}")
               return anykernel_zip
 
           async def send_zip():
@@ -967,20 +977,19 @@ jobs:
           `[+] TMPFS XATTR + POSIX ACL Support`
           `[+] Kernel-level Baseband Protection`"""
               
-              # Download artifact
               zip_file = download_artifact()
               
               if not zip_file or not os.path.exists(zip_file):
-                  print("❌ Gagal download atau buat ZIP")
+                  print("❌ Gagal download")
                   return False
               
               file_size = os.path.getsize(zip_file)
               
               if file_size > 50 * 1024 * 1024:
-                  print(f"⚠️ File terlalu besar: {format_size(file_size)}")
+                  print(f"⚠️ Terlalu besar: {format_size(file_size)}")
                   return False
               
-              print(f"\n📤 Mengirim: {zip_file} ({format_size(file_size)})")
+              print(f"📤 Mengirim: {format_size(file_size)}")
               
               try:
                   with open(zip_file, 'rb') as f:
@@ -991,10 +1000,10 @@ jobs:
                           caption=caption,
                           parse_mode='MarkdownV2'
                       )
-                  print("✅ Berhasil terkirim!")
+                  print("✅ Terkirim!")
                   return True
               except Exception as e:
-                  print(f"⚠️ Error MarkdownV2: {e}")
+                  print(f"⚠️ Error: {e}")
                   try:
                       caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
                       with open(zip_file, 'rb') as f:
@@ -1004,7 +1013,7 @@ jobs:
                               filename=os.path.basename(zip_file),
                               caption=caption_plain
                           )
-                      print("✅ Berhasil terkirim (plain)!")
+                      print("✅ Terkirim (plain)!")
                       return True
                   except Exception as e2:
                       print(f"❌ Gagal: {e2}")
@@ -1019,54 +1028,10 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACT_ID: ${{ steps.upload-artifact.outputs.artifact-id }}
+          ARTIFACT_ID: ${{ steps.set-artifact-id.outputs.artifact_id }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
           INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
           INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
           CONFIG: ${{ env.CONFIG }}
-
-      - name: Notifikasi Build Gagal
-        if: failure()
-        run: |
-          pip3 install python-telegram-bot --quiet
-          
-          cat > fail_notify.py << 'PYEOF'
-          import asyncio
-          import os
-          from telegram import Bot
-          
-          async def notify_fail():
-              bot = Bot(token=os.environ['TELEGRAM_BOT_TOKEN'])
-              chat_id = os.environ['TELEGRAM_CHAT_ID']
               
-              android_ver = os.environ.get('INPUT_ANDROID_VERSION', 'N/A')
-              kernel_ver = os.environ.get('INPUT_KERNEL_VERSION', 'N/A')
-              sub_level = os.environ.get('INPUT_SUB_LEVEL', 'N/A')
-              variant = os.environ.get('INPUT_KERNELSU_VARIANT', 'N/A')
-              
-              text = f"""❌ *Build Gagal\\!*
-
-          📱 Android: {android_ver}
-          🔧 Kernel: {kernel_ver}\\.{sub_level}
-          ⚙️ Variant: {variant}"""
-              
-              try:
-                  await bot.send_message(chat_id=chat_id, text=text, parse_mode='MarkdownV2')
-                  print("✅ Notifikasi gagal terkirim")
-              except:
-                  text_plain = f"❌ Build Gagal!\n\n📱 Android: {android_ver}\n🔧 Kernel: {kernel_ver}.{sub_level}\n⚙️ Variant: {variant}"
-                  await bot.send_message(chat_id=chat_id, text=text_plain)
-                  print("✅ Notifikasi gagal terkirim (plain)")
-          
-          asyncio.run(notify_fail())
-          PYEOF
-          
-          python3 fail_notify.py
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          INPUT_ANDROID_VERSION: ${{ inputs.android_version }}
-          INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
-          INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
-          INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
