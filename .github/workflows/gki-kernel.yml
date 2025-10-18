@@ -841,7 +841,6 @@ jobs:
             *.img
 
       - name: 上传编译资产 (仅 AK3)
-        id: upload-artifact
         if: ${{ inputs.onlyAk3 }}
         uses: actions/upload-artifact@v4
         with:
