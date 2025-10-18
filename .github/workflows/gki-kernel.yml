@@ -846,20 +846,23 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
-      - name: Kirim Notifikasi dan File ZIP ke Telegram
+      - name: Download Artifact
+        if: success()
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
+          path: ./artifacts
+
+      - name: Kirim File ZIP ke Telegram
         if: success()
         run: |
-          # Install library
           pip3 install python-telegram-bot --quiet
 
-          # Buat script Python
           cat > telegram_sender.py << 'PYEOF'
           import os
-          import sys
           import asyncio
           import subprocess
           import glob
-          from pathlib import Path
           from telegram import Bot
 
           BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -867,273 +870,116 @@ jobs:
           KERNEL_VER = os.environ.get("INPUT_KERNEL_VERSION") + "." + os.environ.get("INPUT_SUB_LEVEL")
           KSU_VARIANT = os.environ.get("INPUT_KERNELSU_VARIANT")
           CONFIG_DIR = os.environ.get("CONFIG")
-          MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-
-          def get_kernel_version():
-              """Deteksi versi kernel dari Image file"""
-              try:
-                  # Cari file Image
-                  image_paths = [
-                      "Image",
-                      "AnyKernel3/Image",
-                      f"{CONFIG_DIR}/out/*/dist/Image",
-                      f"{CONFIG_DIR}/bazel-bin/common/kernel_aarch64/Image"
-                  ]
-                  
-                  image_file = None
-                  for pattern in image_paths:
-                      matches = glob.glob(pattern)
-                      if matches:
-                          image_file = matches[0]
-                          break
-                  
-                  if image_file and os.path.exists(image_file):
-                      # Extract version dari Image file
-                      result = subprocess.check_output(
-                          ['strings', image_file], 
-                          universal_newlines=True,
-                          stderr=subprocess.DEVNULL
-                      )
-                      
-                      # Cari baris "Linux version"
-                      for line in result.splitlines():
-                          if 'Linux version' in line:
-                              # Extract versi kernel (contoh: 6.6.30-android15-8-g...)
-                              parts = line.split()
-                              if len(parts) >= 3:
-                                  version = parts[2].split('-')[0]  # Ambil 6.6.30
-                                  return version
-                  
-                  # Fallback ke input
-                  return KERNEL_VER
-              except:
-                  return KERNEL_VER
 
           def get_ksu_version():
-              """Deteksi versi KernelSU dari direktori git"""
-              ksu_dirs = {
-                  "Next": "KernelSU-Next", 
-                  "SukiSU": "KernelSU", 
-                  "Official": "KernelSU", 
-                  "MKSU": "KernelSU"
-              }
+              ksu_dirs = {"Next": "KernelSU-Next", "SukiSU": "KernelSU", "Official": "KernelSU", "MKSU": "KernelSU"}
               ksu_dir = ksu_dirs.get(KSU_VARIANT, "KernelSU")
               ksu_path = os.path.join(CONFIG_DIR, ksu_dir)
               
               if not os.path.isdir(ksu_path):
-                  return f"{KSU_VARIANT}"
+                  return f"{KSU_VARIANT} (N/A)"
               
               try:
-                  # Ambil commit count total
-                  commit_count = subprocess.check_output(
-                      ['git', 'rev-list', '--count', 'HEAD'], 
-                      cwd=ksu_path, 
-                      universal_newlines=True
-                  ).strip()
-                  
-                  return f"{KSU_VARIANT} ({commit_count})"
+                  tag = subprocess.check_output(['git', 'describe', '--tags', '--abbrev=0'], cwd=ksu_path, stderr=subprocess.DEVNULL, universal_newlines=True).strip()
+                  return f"{KSU_VARIANT} ({tag})"
               except:
-                  return f"{KSU_VARIANT}"
+                  try:
+                      commit = subprocess.check_output(['git', 'rev-parse', '--short=8', 'HEAD'], cwd=ksu_path, universal_newlines=True).strip()
+                      return f"{KSU_VARIANT} ({commit})"
+                  except:
+                      return f"{KSU_VARIANT} (N/A)"
 
           def get_susfs_info():
-              """Deteksi versi SUSFS dari source code"""
-              try:
-                  # Path ke file susfs.h
-                  susfs_paths = [
-                      f"{CONFIG_DIR}/common/include/linux/susfs.h",
-                      f"{CONFIG_DIR}/KernelSU/kernel/susfs.h",
-                      f"{CONFIG_DIR}/KernelSU-Next/kernel/susfs.h"
-                  ]
-                  
-                  susfs_file = None
-                  for path in susfs_paths:
-                      if os.path.exists(path):
-                          susfs_file = path
-                          break
-                  
-                  if susfs_file:
-                      with open(susfs_file, 'r') as f:
-                          content = f.read()
-                          
-                          # Cari versi SUSFS
-                          import re
-                          version_match = re.search(r'SUSFS_VERSION\s+"([^"]+)"', content)
-                          if version_match:
-                              version = version_match.group(1)
-                              
-                              # Deteksi manual hook dari config
-                              manual_hook = False
-                              if KSU_VARIANT in ["Next", "SukiSU"]:
-                                  manual_hook = True
-                              
-                              # Cek dari gki_defconfig
-                              config_path = f"{CONFIG_DIR}/common/arch/arm64/configs/gki_defconfig"
-                              if os.path.exists(config_path):
-                                  with open(config_path, 'r') as cfg:
-                                      cfg_content = cfg.read()
-                                      if 'CONFIG_KSU_MANUAL_HOOK=y' in cfg_content:
-                                          manual_hook = True
-                              
-                              if manual_hook:
-                                  return f"v{version} (Manual Hook)"
-                              else:
-                                  return f"v{version}"
-                  
-                  # Fallback default
-                  if KSU_VARIANT in ["Next", "SukiSU"]:
-                      return "v1.5.12 (Manual Hook)"
+              if KSU_VARIANT in ["Next", "SukiSU"]:
+                  return "v1.5.12 (Manual Hook)"
+              elif KSU_VARIANT == "Official":
                   return "v1.5.12"
-              except:
-                  if KSU_VARIANT in ["Next", "SukiSU"]:
-                      return "v1.5.12 (Manual Hook)"
-                  return "v1.5.12"
+              return "N/A"
 
-          def format_size(bytes):
+          def format_size(bytes_size):
               for unit in ['B', 'KB', 'MB', 'GB']:
-                  if bytes < 1024.0:
-                      return f"{bytes:.2f} {unit}"
-                  bytes /= 1024.0
-              return f"{bytes:.2f} TB"
+                  if bytes_size < 1024.0:
+                      return f"{bytes_size:.2f} {unit}"
+                  bytes_size /= 1024.0
+              return f"{bytes_size:.2f} TB"
 
           async def send_zip():
               bot = Bot(token=BOT_TOKEN)
-              
-              # Auto-detect versi
-              kernel_ver = get_kernel_version()
               driver_ksu = get_ksu_version()
               susfs_info = get_susfs_info()
               
-              print(f"🔍 Deteksi otomatis:")
-              print(f"   Kernel: {kernel_ver}")
-              print(f"   KSU: {driver_ksu}")
-              print(f"   SUSFS: {susfs_info}")
+              caption = f"""```
+          KernelVer: {KERNEL_VER}
+          DriverKSU: {driver_ksu}
+          SUSFS ඞ: {susfs_info}
+          ```
+
+          📝 *Features:*
+          `[+] LZ4 v1.10.0 & LZ4KD (ZRAM)`
+          `[+] BBR Algorithm + ECN Support`
+          `[+] TMPFS XATTR + POSIX ACL Support`
+          `[+] Kernel-level Baseband Protection`"""
               
-              # Caption dengan format code block
-              caption = (
-                  f"```\n"
-                  f"KernelVer: {kernel_ver}\n"
-                  f"DriverKSU: {driver_ksu}\n"
-                  f"SUSFS ඞ: {susfs_info}\n"
-                  f"```\n\n"
-                  f"📝 *Features:*\n"
-                  f"```\n"
-                  f"[+] LZ4 v1.10.0 & LZ4KD (ZRAM)\n"
-                  f"[+] BBR Algorithm + ECN Support\n"
-                  f"[+] TMPFS XATTR + POSIX ACL Support\n"
-                  f"[+] Kernel-level Baseband Protection\n"
-                  f"```\n\n"
-                  f"⬇️ *How To Flash:*\n"
-                  f"```\n"
-                  f"Use flashing software, such as Horizon\n"
-                  f"Kernel Flasher for flashing the kernel\n"
-                  f"(Give root access to the Application)\n"
-                  f"```"
-              )
+              # Cari semua file di folder artifacts
+              print("🔍 Mencari file di ./artifacts...")
+              print(f"📂 Isi artifacts:")
               
-              # Cari file ZIP
-              search_paths = [".", "AnyKernel3", f"{CONFIG_DIR}/AnyKernel3"]
-              zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*kernel*.zip", "*.zip"]
+              all_files = []
+              for root, dirs, files in os.walk("./artifacts"):
+                  for file in files:
+                      filepath = os.path.join(root, file)
+                      all_files.append(filepath)
+                      print(f"  - {filepath} ({format_size(os.path.getsize(filepath))})")
               
-              print("🔍 Mencari file ZIP...")
-              print(f"📂 Direktori saat ini: {os.getcwd()}")
+              # Cari file AnyKernel3 ZIP
+              zip_files = [f for f in all_files if 'AnyKernel3' in f and f.endswith('.zip')]
               
-              all_zips = []
-              for search_path in search_paths:
-                  if os.path.exists(search_path):
-                      for pattern in zip_patterns:
-                          full_pattern = os.path.join(search_path, pattern)
-                          found_files = glob.glob(full_pattern)
-                          all_zips.extend(found_files)
+              # Fallback: cari file .zip apapun
+              if not zip_files:
+                  zip_files = [f for f in all_files if f.endswith('.zip')]
               
-              # Hapus duplikat
-              all_zips = list(set(all_zips))
+              if not zip_files:
+                  print("❌ Tidak ada file ZIP yang ditemukan")
+                  return False
               
-              print(f"✅ Ditemukan {len(all_zips)} file ZIP")
-              for z in all_zips:
-                  print(f"  - {z}")
+              # Kirim file
+              zip_file = zip_files[0]
+              file_size = os.path.getsize(zip_file)
               
-              # Filter dan kirim
-              for zip_file in all_zips:
-                  # Skip file yang bukan kernel
-                  if "telegram_sender" in zip_file.lower():
-                      continue
-                  
-                  if not os.path.isfile(zip_file):
-                      continue
-                  
-                  file_size = os.path.getsize(zip_file)
-                  
-                  # Cek ukuran
-                  if file_size > MAX_FILE_SIZE:
-                      print(f"⚠️ Skip (terlalu besar): {zip_file} ({format_size(file_size)})")
-                      continue
-                  
-                  # Kirim file
+              print(f"\n📦 Mengirim: {zip_file} ({format_size(file_size)})")
+              
+              try:
+                  with open(zip_file, 'rb') as f:
+                      await bot.send_document(
+                          chat_id=CHAT_ID,
+                          document=f,
+                          filename=os.path.basename(zip_file),
+                          caption=caption,
+                          parse_mode='MarkdownV2'
+                      )
+                  print("✅ Berhasil terkirim!")
+                  return True
+              except Exception as e:
+                  print(f"⚠️ Error MarkdownV2: {e}")
                   try:
-                      print(f"📦 Mengirim: {zip_file} ({format_size(file_size)})")
+                      caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
                       with open(zip_file, 'rb') as f:
                           await bot.send_document(
-                              chat_id=CHAT_ID, 
-                              document=f, 
-                              filename=os.path.basename(zip_file), 
-                              caption=caption, 
-                              parse_mode='Markdown'
+                              chat_id=CHAT_ID,
+                              document=f,
+                              filename=os.path.basename(zip_file),
+                              caption=caption_plain
                           )
-                      print(f"✅ Berhasil terkirim: {zip_file}")
+                      print("✅ Berhasil terkirim (plain)!")
                       return True
-                  except Exception as e:
-                      print(f"⚠️ Error Markdown: {e}")
-                      # Fallback plain text
-                      try:
-                          caption_plain = (
-                              f"KernelVer: {kernel_ver}\n"
-                              f"DriverKSU: {driver_ksu}\n"
-                              f"SUSFS ඞ: {susfs_info}\n\n"
-                              f"📝 Features:\n"
-                              f"[+] LZ4 v1.10.0 & LZ4KD (ZRAM)\n"
-                              f"[+] BBR Algorithm + ECN Support\n"
-                              f"[+] TMPFS XATTR + POSIX ACL Support\n"
-                              f"[+] Kernel-level Baseband Protection\n\n"
-                              f"⬇️ How To Flash:\n"
-                              f"Use flashing software, such as Horizon\n"
-                              f"Kernel Flasher for flashing the kernel\n"
-                              f"(Give root access to the Application)"
-                          )
-                          with open(zip_file, 'rb') as f:
-                              await bot.send_document(
-                                  chat_id=CHAT_ID, 
-                                  document=f, 
-                                  filename=os.path.basename(zip_file), 
-                                  caption=caption_plain
-                              )
-                          print(f"✅ Berhasil terkirim (plain): {zip_file}")
-                          return True
-                      except Exception as e2:
-                          print(f"❌ Gagal: {e2}")
-                          continue
-              
-              # Debug
-              print("\n❌ Tidak ada file ZIP yang berhasil dikirim")
-              print("📂 Struktur direktori:")
-              for root, dirs, files in os.walk("."):
-                  level = root.replace(".", "", 1).count(os.sep)
-                  indent = " " * 2 * level
-                  print(f"{indent}{os.path.basename(root)}/")
-                  subindent = " " * 2 * (level + 1)
-                  for file in files:
-                      if file.endswith('.zip'):
-                          fpath = os.path.join(root, file)
-                          fsize = format_size(os.path.getsize(fpath))
-                          print(f"{subindent}{file} ({fsize})")
-              
-              return False
+                  except Exception as e2:
+                      print(f"❌ Gagal: {e2}")
+                      return False
 
-          # Run
           success = asyncio.run(send_zip())
-          sys.exit(0 if success else 1)
+          exit(0 if success else 1)
           PYEOF
 
-          # Jalankan script
           python3 telegram_sender.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -1142,3 +988,49 @@ jobs:
           INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
           INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
           CONFIG: ${{ env.CONFIG }}
+
+      - name: Notifikasi Build Gagal
+        if: failure()
+        run: |
+          pip3 install python-telegram-bot --quiet
+          
+          cat > fail_notify.py << 'PYEOF'
+          import asyncio
+          import os
+          from telegram import Bot
+          
+          async def notify_fail():
+              bot = Bot(token=os.environ['TELEGRAM_BOT_TOKEN'])
+              chat_id = os.environ['TELEGRAM_CHAT_ID']
+              
+              android_ver = os.environ.get('INPUT_ANDROID_VERSION', 'N/A')
+              kernel_ver = os.environ.get('INPUT_KERNEL_VERSION', 'N/A')
+              sub_level = os.environ.get('INPUT_SUB_LEVEL', 'N/A')
+              variant = os.environ.get('INPUT_KERNELSU_VARIANT', 'N/A')
+              
+              text = f"""❌ *Build Gagal\\!*
+
+          📱 Android: {android_ver}
+          🔧 Kernel: {kernel_ver}\\.{sub_level}
+          ⚙️ Variant: {variant}"""
+              
+              try:
+                  await bot.send_message(chat_id=chat_id, text=text, parse_mode='MarkdownV2')
+                  print("✅ Notifikasi gagal terkirim")
+              except Exception as e:
+                  print(f"⚠️ Error MarkdownV2: {e}")
+                  text_plain = f"❌ Build Gagal!\n\n📱 Android: {android_ver}\n🔧 Kernel: {kernel_ver}.{sub_level}\n⚙️ Variant: {variant}"
+                  await bot.send_message(chat_id=chat_id, text=text_plain)
+                  print("✅ Notifikasi gagal terkirim (plain)")
+          
+          asyncio.run(notify_fail())
+          PYEOF
+          
+          python3 fail_notify.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_ANDROID_VERSION: ${{ inputs.android_version }}
+          INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
+          INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
+          INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
