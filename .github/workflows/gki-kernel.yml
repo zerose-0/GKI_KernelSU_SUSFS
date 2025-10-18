@@ -846,6 +846,17 @@ jobs:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}-Anykernel3
           path: ./AnyKernel3/*
 
+      - name: Debug - List Files
+        if: success()
+        run: |
+          echo "📂 Current directory: $(pwd)"
+          echo ""
+          echo "📦 All ZIP files:"
+          find . -name "*.zip" -type f -exec ls -lh {} \;
+          echo ""
+          echo "📂 AnyKernel3 directory:"
+          ls -lah AnyKernel3/ || echo "AnyKernel3 directory not found"
+
       - name: Kirim Notifikasi dan File ZIP ke Telegram
         if: success()
         run: |
@@ -859,6 +870,7 @@ jobs:
           import asyncio
           import subprocess
           import glob
+          from pathlib import Path
           from telegram import Bot
 
           BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -918,59 +930,94 @@ jobs:
           `[+] TMPFS XATTR + POSIX ACL Support`
           `[+] Kernel-level Baseband Protection`"""
               
-              # Cari file ZIP
+              # Cari file ZIP di berbagai lokasi
+              search_paths = [
+                  ".",
+                  "AnyKernel3",
+                  f"{CONFIG_DIR}/AnyKernel3",
+              ]
+              
               zip_patterns = ["*AnyKernel3*.zip", "*-AnyKernel3.zip", "*kernel*.zip", "*.zip"]
               
-              for pattern in zip_patterns:
-                  zip_files = glob.glob(pattern)
-                  for zip_file in zip_files:
-                      # Skip file yang bukan kernel
-                      if "telegram_sender" in zip_file.lower():
-                          continue
-                      
-                      file_size = os.path.getsize(zip_file)
-                      
-                      # Cek ukuran
-                      if file_size > MAX_FILE_SIZE:
-                          print(f"⚠️ File terlalu besar: {zip_file} ({format_size(file_size)})")
-                          continue
-                      
-                      # Kirim file
+              print("🔍 Mencari file ZIP...")
+              print(f"📂 Direktori saat ini: {os.getcwd()}")
+              
+              all_zips = []
+              for search_path in search_paths:
+                  if os.path.exists(search_path):
+                      for pattern in zip_patterns:
+                          full_pattern = os.path.join(search_path, pattern)
+                          found_files = glob.glob(full_pattern)
+                          all_zips.extend(found_files)
+              
+              # Hapus duplikat
+              all_zips = list(set(all_zips))
+              
+              print(f"✅ Ditemukan {len(all_zips)} file ZIP")
+              for z in all_zips:
+                  print(f"  - {z}")
+              
+              # Filter dan kirim
+              for zip_file in all_zips:
+                  # Skip file yang bukan kernel
+                  if "telegram_sender" in zip_file.lower():
+                      continue
+                  
+                  if not os.path.isfile(zip_file):
+                      continue
+                  
+                  file_size = os.path.getsize(zip_file)
+                  
+                  # Cek ukuran
+                  if file_size > MAX_FILE_SIZE:
+                      print(f"⚠️ Skip (terlalu besar): {zip_file} ({format_size(file_size)})")
+                      continue
+                  
+                  # Kirim file
+                  try:
+                      print(f"📦 Mengirim: {zip_file} ({format_size(file_size)})")
+                      with open(zip_file, 'rb') as f:
+                          await bot.send_document(
+                              chat_id=CHAT_ID, 
+                              document=f, 
+                              filename=os.path.basename(zip_file), 
+                              caption=caption, 
+                              parse_mode='MarkdownV2'
+                          )
+                      print(f"✅ Berhasil terkirim: {zip_file}")
+                      return True
+                  except Exception as e:
+                      print(f"⚠️ Error MarkdownV2: {e}")
+                      # Fallback plain text
                       try:
-                          print(f"📦 Mengirim: {zip_file} ({format_size(file_size)})")
+                          caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
                           with open(zip_file, 'rb') as f:
                               await bot.send_document(
                                   chat_id=CHAT_ID, 
                                   document=f, 
                                   filename=os.path.basename(zip_file), 
-                                  caption=caption, 
-                                  parse_mode='MarkdownV2'
+                                  caption=caption_plain
                               )
-                          print(f"✅ Berhasil terkirim: {zip_file}")
+                          print(f"✅ Berhasil terkirim (plain): {zip_file}")
                           return True
-                      except Exception as e:
-                          print(f"⚠️ Error dengan MarkdownV2: {e}")
-                          # Fallback plain text
-                          try:
-                              caption_plain = caption.replace('```', '').replace('`', '').replace('*', '')
-                              with open(zip_file, 'rb') as f:
-                                  await bot.send_document(
-                                      chat_id=CHAT_ID, 
-                                      document=f, 
-                                      filename=os.path.basename(zip_file), 
-                                      caption=caption_plain
-                                  )
-                              print(f"✅ Berhasil terkirim (plain text): {zip_file}")
-                              return True
-                          except Exception as e2:
-                              print(f"❌ Gagal mengirim {zip_file}: {e2}")
-                              continue
+                      except Exception as e2:
+                          print(f"❌ Gagal: {e2}")
+                          continue
               
-              # Tidak ada file yang berhasil dikirim
+              # Debug: tampilkan semua file
               print("\n❌ Tidak ada file ZIP yang berhasil dikirim")
-              print("📂 File ZIP yang tersedia:")
-              for f in glob.glob("*.zip"):
-                  print(f"  - {f} ({format_size(os.path.getsize(f))})")
+              print("📂 Struktur direktori:")
+              for root, dirs, files in os.walk("."):
+                  level = root.replace(".", "", 1).count(os.sep)
+                  indent = " " * 2 * level
+                  print(f"{indent}{os.path.basename(root)}/")
+                  subindent = " " * 2 * (level + 1)
+                  for file in files:
+                      if file.endswith('.zip'):
+                          fpath = os.path.join(root, file)
+                          fsize = format_size(os.path.getsize(fpath))
+                          print(f"{subindent}{file} ({fsize})")
+              
               return False
 
           # Run
@@ -987,48 +1034,3 @@ jobs:
           INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
           INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
           CONFIG: ${{ env.CONFIG }}
-
-      - name: Notifikasi Build Gagal
-        if: failure()
-        run: |
-          pip3 install python-telegram-bot --quiet
-          
-          cat > fail_notify.py << 'PYEOF'
-          import asyncio
-          import os
-          from telegram import Bot
-          
-          async def notify_fail():
-              bot = Bot(token=os.environ['TELEGRAM_BOT_TOKEN'])
-              chat_id = os.environ['TELEGRAM_CHAT_ID']
-              
-              android_ver = os.environ['INPUT_ANDROID_VERSION']
-              kernel_ver = os.environ['INPUT_KERNEL_VERSION']
-              sub_level = os.environ['INPUT_SUB_LEVEL']
-              variant = os.environ['INPUT_KERNELSU_VARIANT']
-              
-              text = f"""❌ *Build Gagal\\!*
-
-          📱 Android: {android_ver}
-          🔧 Kernel: {kernel_ver}\\.{sub_level}
-          ⚙️ Variant: {variant}"""
-              
-              try:
-                  await bot.send_message(chat_id=chat_id, text=text, parse_mode='MarkdownV2')
-              except:
-                  text_plain = f"❌ Build Gagal!\n\n📱 Android: {android_ver}\n🔧 Kernel: {kernel_ver}.{sub_level}\n⚙️ Variant: {variant}"
-                  await bot.send_message(chat_id=chat_id, text=text_plain)
-              
-              print("✅ Notifikasi gagal terkirim")
-          
-          asyncio.run(notify_fail())
-          PYEOF
-          
-          python3 fail_notify.py
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          INPUT_ANDROID_VERSION: ${{ inputs.android_version }}
-          INPUT_KERNEL_VERSION: ${{ inputs.kernel_version }}
-          INPUT_SUB_LEVEL: ${{ inputs.sub_level }}
-          INPUT_KERNELSU_VARIANT: ${{ inputs.kernelsu_variant }}
