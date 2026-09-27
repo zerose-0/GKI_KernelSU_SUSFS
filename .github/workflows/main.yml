@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - CI
+          - Nightly
           - Pre-Release
           - Release
         default: CI
@@ -1655,7 +1656,7 @@ jobs:
           if-no-files-found: warn
 
   nightly-release:
-    if: always() && github.event_name == 'schedule'
+    if: always() && (github.event_name == 'schedule' || inputs.release_type == 'Nightly')
     needs: [notes-preview]
     runs-on: ubuntu-latest
     steps:
