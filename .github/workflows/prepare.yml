@@ -81,6 +81,11 @@ on:
         required: false
         type: string
         default: ""
+      page_size:
+        description: "ARM64 page size: 4k (default) or 16k"
+        required: false
+        type: string
+        default: "4k"
 
 jobs:
   generate-matrix:
@@ -192,4 +197,5 @@ jobs:
       keep_kmi: ${{ inputs.keep_kmi }}
       allow_version_mismatch: ${{ inputs.allow_version_mismatch }}
       use_cache: ${{ inputs.use_cache }}
+      page_size: ${{ inputs.page_size }}
     secrets: inherit
