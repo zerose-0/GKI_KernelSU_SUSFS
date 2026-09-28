@@ -84,7 +84,10 @@ on:
       page_size:
         description: "ARM64 page size: 4k (default) or 16k"
         required: false
-        type: string
+        type: choice
+        options:
+          - 4k
+          - 16k
         default: "4k"
 
 jobs:

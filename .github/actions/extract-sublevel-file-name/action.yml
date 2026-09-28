@@ -18,7 +18,10 @@ inputs:
     type: string
   page_size:
     required: false
-    type: string
+    type: choice
+    options:
+      - 4k
+      - 16k
     default: '4k'
 outputs:
   file_name:
