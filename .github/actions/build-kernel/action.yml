@@ -81,7 +81,7 @@ runs:
             PAGE_SIZE_FLAGS+=(--page_size=16k)
           fi
           tools/bazel build \
-            --config=release --nostamp \
+            --config=fast \
             "${PAGE_SIZE_FLAGS[@]}" \
             --disk_cache=/home/runner/.cache/bazel \
             //common:kernel_aarch64/Image
