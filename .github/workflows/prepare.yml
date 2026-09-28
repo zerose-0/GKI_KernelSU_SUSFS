@@ -165,6 +165,9 @@ jobs:
 
   build:
     needs: generate-matrix
+    concurrency:
+      group: prepare-${{ inputs.root_flavor }}-${{ matrix.version }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
