@@ -7,10 +7,7 @@ inputs:
   page_size:
     description: 'ARM64 page size: 4k (default, unchanged behaviour) or 16k'
     required: false
-    type: choice
-    options:
-      - 4k
-      - 16k
+    type: string
     default: '4k'
   allow_version_mismatch:
     description: 'Whether to force-load version-mismatched modules'
