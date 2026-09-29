@@ -1115,7 +1115,19 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && !inputs.test_release_notes && (inputs.release_type == 'Pre-Release' || inputs.release_type == 'Release')
+    # always() so a skipped sibling doesn't cascade: on a single-family
+    # dispatch the other six build jobs skip, and a skipped need skips
+    # this job too, making Pre-Release/Release unreachable outside a
+    # full 7-family run. The contains() checks keep a genuinely failed
+    # or cancelled build from publishing. needs.* rather than a per-job
+    # list so a new family doesn't need editing here.
+    if: >-
+      always() && !cancelled() &&
+      github.event_name == 'workflow_dispatch' &&
+      !inputs.test_release_notes &&
+      (inputs.release_type == 'Pre-Release' || inputs.release_type == 'Release') &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     permissions:
       contents: write
     needs:
