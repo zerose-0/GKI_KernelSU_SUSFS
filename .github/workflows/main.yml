@@ -319,7 +319,11 @@ jobs:
             printf '{"root_flavor":"%s","variant":"%s","root_commit":"%s"}' "$1" "$2" "$3"
           }
 
-          case "${{ inputs.root_flavor || 'All' }}" in
+          # On 'schedule' there are no inputs, so the default must be the exact
+          # label the "All" arm matches below — a bare 'All' fell through to *)
+          # and failed the whole job, yet the manager step's All* glob still
+          # matched, so the two steps disagreed. Keep these in sync.
+          case "${{ inputs.root_flavor || 'All (KernelSU-Next + KernelSU + ReSukiSU)' }}" in
             KernelSU)
               echo "root_flavor=kernelsu" >> "$GITHUB_OUTPUT"
               emit root_commit "$KERNELSU_COMMIT"
@@ -1687,8 +1691,17 @@ jobs:
           if-no-files-found: warn
 
   nightly-release:
-    if: always() && (github.event_name == 'schedule' || inputs.release_type == 'Nightly')
-    needs: [notes-preview]
+    # Do not recreate `nightly` from a failed run. `notes-preview` is
+    # if: always() so a build failure still renders notes; without the
+    # result check below that meant a failed resolve-sources would
+    # delete the existing nightly tag and republish it from a body
+    # rendered off empty/absent inputs.
+    if: >-
+      always() &&
+      needs.resolve-sources.result == 'success' &&
+      needs.notes-preview.result == 'success' &&
+      (github.event_name == 'schedule' || inputs.release_type == 'Nightly')
+    needs: [notes-preview, resolve-sources]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
