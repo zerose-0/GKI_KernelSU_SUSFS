@@ -7,6 +7,11 @@ permissions:
 concurrency:
   group: build-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
+  # Default is queue: single — one running, one pending. A third dispatch
+  # displaces the pending one, which cancelled a queued build. queue: max
+  # holds up to 100 pending runs and runs them FIFO, so back-to-back
+  # dispatches run in order instead of overwriting each other.
+  queue: max
 
 on:
   workflow_dispatch:
