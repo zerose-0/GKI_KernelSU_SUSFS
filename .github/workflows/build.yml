@@ -741,7 +741,7 @@ jobs:
           while :; do
             curl --fail --silent --show-error --location \
               --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 30 \
-              --header "Authorization: Bearer ***" \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
               "${artifacts_api}&page=${page}" -o "$page_file"
 
