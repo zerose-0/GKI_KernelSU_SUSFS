@@ -281,6 +281,7 @@ runs:
         echo "zips: $(ls -1 release-assets/*.zip 2>/dev/null | wc -l)"
 
     - name: Create Release
+      shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         TAG_NAME: ${{ steps.tag.outputs.new_tag }}
